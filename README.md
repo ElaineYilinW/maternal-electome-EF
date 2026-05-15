@@ -18,29 +18,32 @@ each in both a 3-band and a 1-Hz-frequency-step variant.
 ├── requirements.txt
 ├── .gitignore
 │
-├── 00_data_preprocessing.ipynb      Feature extraction from raw LFP -> .pkl files
+├── notebooks/
+│   ├── 00_data_preprocessing.ipynb      Feature extraction from raw LFP -> .pkl files
+│   ├── OnnestVsOffnest_3band.ipynb      Maternal engagement EF (canonical, dCSFA_NMF Ver3)
+│   ├── OnnestVsOffnest_1Hz.ipynb        Same task, 1-Hz frequency steps (Ver1)
+│   ├── LickingVsNonLicking_3band.ipynb  Licking EF within on-nest (Ver1)
+│   ├── LickingVsGrooming_3band.ipynb    Lick-vs-groom EF (Ver1)
+│   ├── PreVsPost134_3band.ipynb         Maternal stage EF: Pre vs PD1/PD3/PD4 (Ver1)
+│   └── PreVsPost134_1Hz.ipynb           Same task, 1-Hz steps (Ver1)
 │
-├── OnnestVsOffnest_3band.ipynb      Maternal engagement EF (canonical, dCSFA_NMF Ver3)
-├── OnnestVsOffnest_1Hz.ipynb        Same task, 1-Hz frequency steps (Ver1)
-├── LickingVsNonLicking_3band.ipynb  Licking EF within on-nest (Ver1)
-├── LickingVsGrooming_3band.ipynb    Lick-vs-groom EF (Ver1)
-├── PreVsPost134_3band.ipynb         Maternal stage EF: Pre vs PD1/PD3/PD4 (Ver1)
-├── PreVsPost134_1Hz.ipynb           Same task, 1-Hz steps (Ver1)
-│
-├── dCSFA_NMF_Ver1.py                Model implementation (v1.3 - Early stopping, fixes)
-├── dCSFA_NMF_Ver3.py                Model implementation (v1.4 - val eval/train fix, sup_weight auto-adjust)
-└── umc_data_tools.py                LFP/feature utilities (bundled verbatim from carlson-lab/dCSFA-NMF)
+└── src/
+    ├── dCSFA_NMF_Ver1.py                Model implementation (v1.3 - Early stopping, fixes)
+    ├── dCSFA_NMF_Ver3.py                Model implementation (v1.4 - val eval/train fix, sup_weight auto-adjust)
+    └── umc_data_tools.py                LFP/feature utilities (bundled verbatim from carlson-lab/dCSFA-NMF)
 ```
 
 Each task notebook begins with a self-contained **Overview** markdown cell
 describing the task, model hyperparameters, training data path, pipeline,
-and expected output artifacts.
+and expected output artifacts. The first code cell of each notebook adds
+`../src` to `sys.path` so the model and data-utility modules import correctly
+when run from `notebooks/`.
 
 ---
 
 ## Pipeline
 
-| # | Notebook | What it does |
+| # | Notebook (in `notebooks/`) | What it does |
 |---|---|---|
 | 00 | `00_data_preprocessing.ipynb` | Builds 10 spectral-feature `.pkl` files (3-band + 1-Hz variants, plus on-nest / licking / grooming / pup-retrieval subsets) |
 | 01 | `OnnestVsOffnest_3band.ipynb` | Maternal engagement EF, 3 wide bands `(2-7), (8-12), (14-23)` Hz (dCSFA-NMF Ver3) |
@@ -74,7 +77,7 @@ pip install -r requirements.txt
 # Mount RDSS data share at /Volumes/rdss_rhultman/ before running.
 # Raw LFP and intermediate .pkl files are not in this repo.
 
-jupyter notebook 00_data_preprocessing.ipynb
+jupyter notebook notebooks/00_data_preprocessing.ipynb
 ```
 
 ---
@@ -89,8 +92,8 @@ live on the lab RDSS share:
 ```
 
 The preprocessing notebook generates 10 `.pkl` files used downstream
-(see the overview cell in `00_data_preprocessing.ipynb` for the full mapping
-between sections and output paths).
+(see the overview cell in `notebooks/00_data_preprocessing.ipynb` for the full
+mapping between sections and output paths).
 
 ---
 
@@ -110,9 +113,9 @@ This project extends prior work:
 
 - **dCSFA-NMF model** — Carlson Lab at Duke University
   (https://github.com/carlson-lab/dCSFA-NMF).
-  Our `dCSFA_NMF_Ver1.py` and `dCSFA_NMF_Ver3.py` are modified versions of
-  the upstream `dCSFA_NMF.py` (see *Modifications* below).
-- **`umc_data_tools.py`** — bundled verbatim from the same Carlson Lab
+  Our `src/dCSFA_NMF_Ver1.py` and `src/dCSFA_NMF_Ver3.py` are modified versions
+  of the upstream `dCSFA_NMF.py` (see *Modifications* below).
+- **`src/umc_data_tools.py`** — bundled verbatim from the same Carlson Lab
   repository (no modification); provides LFP / feature-pipeline utilities.
 - **`beta-divergence-metrics`** (imported as `torchbd`) — Billy Carson,
   Duke BME (https://github.com/wecarsoniv/beta-divergence-metrics,
@@ -123,12 +126,12 @@ This project extends prior work:
 ## Modifications vs. upstream `dCSFA_NMF.py`
 
 > **Note:** The list below summarises the main fixes recorded in the file-header
-> changelogs of `dCSFA_NMF_Ver1.py` and `dCSFA_NMF_Ver3.py`. It is **not
+> changelogs of `src/dCSFA_NMF_Ver1.py` and `src/dCSFA_NMF_Ver3.py`. It is **not
 > exhaustive** — a full line-by-line diff against the upstream
 > `carlson-lab/dCSFA-NMF` `dCSFA_NMF.py` reveals additional differences that
 > have not yet been documented here. To be completed.
 
-### `dCSFA_NMF_Ver1.py` (v1.3)
+### `src/dCSFA_NMF_Ver1.py` (v1.3)
 - **Early stopping** in `fit()` (`patience`, `min_delta`); best-model
   checkpointing and reload at end of training
 - **Train/Val loss accounting**: both recorded as per-batch means (previously
@@ -139,7 +142,7 @@ This project extends prior work:
 - **`skl_pretrain`**: `random_state=42` for reproducible sklearn-NMF
   pretraining initialization
 
-### `dCSFA_NMF_Ver3.py` (v1.4)
+### `src/dCSFA_NMF_Ver3.py` (v1.4)
 On top of Ver1 fixes, adds:
 - **`eval()` / `train()` toggle** correctly applied during validation forward
   pass — `BatchNorm1d` now uses running stats instead of val-batch stats
