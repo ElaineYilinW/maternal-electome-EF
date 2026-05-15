@@ -1,0 +1,33 @@
+# Data — keep on RDSS, never commit
+*.pkl
+*.pt
+*.mat
+
+# Backup / dirty notebooks
+*_BACKUP.ipynb
+*_dirty*.ipynb
+.ipynb_checkpoints/
+
+# Generated figures and result dirs
+*.png
+*.pdf
+results_*/
+model_checkpoints*/
+temp_best_model.pt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.python-version
+*.egg-info/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
