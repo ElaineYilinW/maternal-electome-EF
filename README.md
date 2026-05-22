@@ -16,28 +16,56 @@ each in both a 3-band and a 1-Hz-frequency-step variant.
 .
 ├── README.md
 ├── requirements.txt
+├── CLEANUP_LOG.md                       Decision log for the paper-prep refactor
 ├── .gitignore
 │
-├── notebooks/
+├── notebooks/                           One notebook per EF task (paper-clean, ~20 cells / ~150 LoC each)
 │   ├── 00_data_preprocessing.ipynb      Feature extraction from raw LFP -> .pkl files
-│   ├── OnnestVsOffnest_3band.ipynb      Maternal engagement EF (canonical, dCSFA_NMF Ver3)
-│   ├── OnnestVsOffnest_1Hz.ipynb        Same task, 1-Hz frequency steps (Ver1)
-│   ├── LickingVsNonLicking_3band.ipynb  Licking EF within on-nest (Ver1)
-│   ├── LickingVsGrooming_3band.ipynb    Lick-vs-groom EF (Ver1)
-│   ├── PreVsPost134_3band.ipynb         Maternal stage EF: Pre vs PD1/PD3/PD4 (Ver1)
-│   └── PreVsPost134_1Hz.ipynb           Same task, 1-Hz steps (Ver1)
+│   ├── OnnestVsOffnest_3band.ipynb      Maternal engagement EF (3 wide bands)
+│   ├── OnnestVsOffnest_1Hz.ipynb        Same task, 54 x 1-Hz bins
+│   ├── LickingVsNonLicking_3band.ipynb  Licking EF within on-nest
+│   ├── LickingVsGrooming_3band.ipynb    Lick-vs-groom EF (paired)
+│   ├── PreVsPost134_3band.ipynb         Maternal stage EF: Pre vs PD1/PD3/PD4
+│   └── PreVsPost134_1Hz.ipynb           Same task, 1-Hz steps
 │
 └── src/
+    │  --- Model code ---
     ├── dCSFA_NMF_Ver1.py                Model implementation (v1.3 - Early stopping, fixes)
     ├── dCSFA_NMF_Ver3.py                Model implementation (v1.4 - val eval/train fix, sup_weight auto-adjust)
-    └── umc_data_tools.py                LFP/feature utilities (bundled verbatim from carlson-lab/dCSFA-NMF)
+    ├── umc_data_tools.py                LFP/feature utilities (bundled verbatim from carlson-lab/dCSFA-NMF)
+    │
+    │  --- Preprocessing helpers (used by notebooks/00_data_preprocessing.ipynb) ---
+    ├── lfp_features.py                  Welch power + squared-coherence feature extraction
+    ├── dataset_assembly.py              Per-mouse labeling + combine-per-stage assembly
+    │
+    │  --- Task-notebook helpers (used by all 6 task notebooks) ---
+    ├── data_utils.py                    Mouse-id cleaning, period filtering, dataset assembly helpers
+    ├── analysis.py                      AUC computations, W_nmf feature selection, permutation/Wilcoxon/Fisher tests
+    ├── viz.py                           Bar/dot heatmaps, per-mouse loading-score plot, 4-panel stage-backproject figure (+ 10-sheet xlsx)
+    ├── training.py                      run_loo_cv (parallel LOO + Wilcoxon vs chance), train_final_model
+    ├── workflow.py                      validate_on_ELS, run_circos_prep, run_stage_backproject (notebook-section wrappers)
+    └── sara_requests.py                 Off-paper one-off data exports (pup retrieval, on-nest loading inspect, P3 behavior)
 ```
 
-Each task notebook begins with a self-contained **Overview** markdown cell
-describing the task, model hyperparameters, training data path, pipeline,
-and expected output artifacts. The first code cell of each notebook adds
-`../src` to `sys.path` so the model and data-utility modules import correctly
-when run from `notebooks/`.
+Each task notebook follows the same **8-section structure** (~150 lines of
+code total per notebook). Every section is one or two function calls against
+`src/` followed by a one-line summary print -- no inline helpers, no verbose
+per-mouse diagnostics:
+
+| Section | What it does | Function called |
+|---|---|---|
+| 1. Data loading and processing | Load pkl, build train + test datasets | `data_utils.create_period_dataset` (Onnest, PreVsPost) or `create_split_dataset` (Licking) |
+| 2. LOO training | Parallel leave-one-mouse-out CV + Wilcoxon vs chance | `training.run_loo_cv` |
+| 3. Full training (paper model) | Train final model on all training mice, save to disk | `training.train_final_model` |
+| 4. Circos plot | Write top-feature CSV for the external circos plotter | `workflow.run_circos_prep` |
+| 5. Elements selection | Dual-filter (absolute strength + relative uniqueness), bar-heatmap figure | `analysis.process_W_nmf_dual_filter` + `viz.create_bar_heatmap_selective` |
+| 6. Validation on ELS group | Per-dataset AUC mean ± SEM + Wilcoxon (no other diagnostics) | `workflow.validate_on_ELS` |
+| 7. Stage backprojection | Project to every stage, median+IQR figure + 10-sheet xlsx + 5 CSVs | `workflow.run_stage_backproject` |
+| 8. Sara's requests (off-paper) | One-off xlsx exports requested by collaborators | `sara_requests.sara_pup_retrieval` (+ `sara_onnest_loading_inspect`, `sara_p3_behavior` in the Onnest notebooks) |
+
+The first code cell of each notebook adds `../src` to `sys.path` and imports
+the modules above, so all later sections read as a clean parameter block +
+a one-line function call.
 
 ---
 

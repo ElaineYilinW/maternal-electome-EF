@@ -15,6 +15,19 @@ results_*/
 model_checkpoints*/
 temp_best_model.pt
 
+# Generated table artifacts (xlsx from create_four_visualizations_with_tables
+# and the Sara request wrappers; CSV companions from run_stage_backproject and
+# run_circos_prep)
+*.xlsx
+*_circos_input.csv
+individual_scores_by_stage.csv
+individual_percentage_changes.csv
+group_scores_by_stage.csv
+group_percentage_changes.csv
+statistical_tests_c_vs_e.csv
+fisher_combined_pvalues.csv
+p4_filtering_summary.csv
+
 # Python
 __pycache__/
 *.pyc

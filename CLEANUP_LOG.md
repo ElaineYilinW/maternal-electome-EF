@@ -128,6 +128,115 @@ that may need revisiting.
 
 ---
 
+## ⚠️ KEY DECISIONS (2026-05-22 paper-clean task-notebook refactor)
+
+The first 12 decisions above covered the **preprocessing notebook** cleanup.
+Decisions 13-17 cover the **6 task notebook** cleanup that followed.
+
+### DECISION 13 — collapse the 6 task notebooks into an 8-section structure
+- The 6 task notebooks had non-uniform cell layouts (42–63 cells each, with
+  duplicated section headers, dead-code cells, multiple inline `def`s of the
+  same helper, and ad-hoc Sara cells interleaved with paper content).
+- **Action taken**: rewrote each notebook into exactly 8 sections, in this order:
+  1. Data loading and processing
+  2. LOO training (pure LOO, no validation split)
+  3. Full training (paper model)
+  4. Circos plot (write top-feature CSV)
+  5. Elements selection (dual-filter + bar heatmap)
+  6. Validation on ELS group (per-dataset AUC mean±SEM + Wilcoxon)
+  7. Stage Backprojection Scores (median+IQR figure + 10-sheet xlsx)
+  8. Additional backprojections (Sara's request)
+- Each section is **one or two function calls** against `src/` followed by a
+  one-line summary print. Final notebook size: 18-21 cells / ~150 LoC each
+  (was 42-63 cells / ~3000+ LoC each).
+
+### DECISION 14 — extract all helpers to 6 new src/ modules
+- Inline `def`s for ``clean_mouse_id``, ``create_dataset``,
+  ``calculate_per_mouse_auc``, ``process_W_nmf_*``,
+  ``create_bar_heatmap_selective``, ``create_four_visualizations_with_tables``,
+  ``exact_permutation_test_*``, ``fisher_combine_pvalues``,
+  ``plot_mouse_loading_timeseries``, ``run_one_fold``, etc. were duplicated
+  across 5-6 notebooks each with minor drift.
+- **Action taken**: extracted to:
+  - `src/data_utils.py` — mouse-id cleaning, period filtering, dataset assembly
+  - `src/analysis.py` — AUC + W_nmf feature selection + statistical tests
+  - `src/viz.py` — heatmaps + per-mouse timeseries + 4-panel stage-backproject
+  - `src/training.py` — `run_loo_cv` (parallel + Wilcoxon vs chance) and `train_final_model`
+  - `src/workflow.py` — `validate_on_ELS`, `run_circos_prep`, `run_stage_backproject`
+  - `src/sara_requests.py` — 3 off-paper xlsx exporters (pup retrieval, onnest loading, P3 behavior)
+- The verbose per-mouse / per-permutation prints in the legacy code are
+  preserved verbatim inside helper functions but gated by `verbose=False`
+  defaults; callers in `workflow.py` / `training.py` keep notebook sections
+  silent except for one-line summaries.
+
+### DECISION 15 — uniformly delete val-split LOO + dead code + cross-task backprojects
+Per-notebook deletions (every kept cell is paper-relevant or Sara request):
+- All Stage-1 val-split LOO cells (`leave_one_out_with_val_split`,
+  `plot_training_history`, `plot_aggregated_training_curves`) -- not used
+  by the paper, only as a one-time hyperparameter pick.
+- All fully-commented dead-code cells.
+- OnnestVsOffnest_3band c15 (Mar13_ver1 training) -- superseded by c16
+  (Mar27_ver2). Both wrote different model files; only ver2 is referenced
+  downstream.
+- OnnestVsOffnest_3band/_1Hz c47/c49 (Licking-vs-Selfgrooming and
+  Licking-vs-NonLicking backprojects) -- sub-experiment cross-task
+  backprojects, not main paper figures.
+- All Sara "score calculation request Jan5/Jan21" exploration cells that
+  produced no artifact (only printed unique-value counts).
+- All Sara "request 3 Jan5" dead cells (fully commented out).
+
+### DECISION 16 — one allowed string change: LickingVsGrooming_3band model name
+- The original `c11` saved to ``Maternal_model_lick_Groom_Dec19.pt`` but
+  every downstream `torch.load(...)` cell loaded ``_ver1.pt``. The
+  Dec19.pt file is dead.
+- **Action taken**: c11 save string changed to
+  ``Maternal_model_lick_Groom_Dec19_ver1.pt`` to match what the rest of the
+  notebook (and the paper figures generated from it) actually use.
+- **Risk**: if RDSS happens to host the original Dec19.pt but not the
+  _ver1.pt, this would cause a load failure. Verified the _ver1 model is the
+  one that produced the paper figures.
+
+### DECISION 17 — keep SEED / hyperparameter / MODEL_SAVE_FILE / TRAINING_DATA_FILE strings VERBATIM
+- Every notebook's paper-active training cell preserves exact-byte values
+  for SEED, model_params dict (sup_weight, h, n_components, etc.), N_EPOCHS,
+  BATCH_SIZE, LR, MODEL_SAVE_FILE, MODEL_STATE_DICT, and all
+  TRAINING_DATA_FILE paths.
+- Hyperparameters are now defined as a `MODEL_PARAMS = {...}` block at the
+  top of Section 2 (LOO training), then **reused unchanged** by Section 3
+  (full training). Previously these were duplicated -- once in the val-split
+  cell, once in the LOO cell, once in the final-training cell, with manual
+  edits between copies that risked drift. Single source of truth now.
+
+---
+
+## Open issues resolved by the paper-clean refactor
+
+Several "Known gaps" from the earlier preprocessing-cleanup section are now
+addressed:
+
+- **Gap #6 (Sara's request cells not paper content)** -- wrapped as
+  `src/sara_requests.py` functions, called as 1-3 lines per notebook in
+  Section 8.
+- **Gap #7 (6 task notebooks have non-uniform structure)** -- all 6 now have
+  identical 8-section layout; only data paths, mouse-id lists, and
+  hyperparameters differ.
+- **Gap #8 (repeated helper functions)** -- 23+ duplicated function bodies
+  collapsed into 6 src/ modules. Notebook code-line counts dropped from
+  ~3000+ each to ~150 each.
+
+Still open (carried forward):
+- **Gap #4 (PyTorch seed determinism)** -- `run_loo_cv` and
+  `train_final_model` set `np.random.seed`, `torch.manual_seed`,
+  `torch.cuda.manual_seed_all` per-fold and at training start, but
+  `torch.backends.cudnn.deterministic = True` and DataLoader/Generator seeds
+  are not yet enforced. Numerical reproducibility on the same machine should
+  be fine for CPU runs; GPU runs may drift by ~1e-4 on AUC.
+- **Gap #1 (real diff documentation)** -- the file-header changelogs in
+  dCSFA_NMF_Ver1/Ver3 are summary-level; full line-by-line diff vs upstream
+  not yet recorded.
+
+---
+
 ## Final repo state (snapshot)
 
 - **GitHub**: https://github.com/ElaineYilinW/maternal-electome-EF (public)
