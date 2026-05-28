@@ -8,6 +8,13 @@
 *_dirty*.ipynb
 .ipynb_checkpoints/
 
+# Paper / manuscript drafts kept inside the repo working directory
+# (they live alongside the code for convenience but should not be committed)
+*.docx
+*.pptx
+~$*.docx
+~$*.pptx
+
 # Generated figures and result dirs
 *.png
 *.pdf

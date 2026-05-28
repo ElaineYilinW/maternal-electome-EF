@@ -237,6 +237,42 @@ Still open (carried forward):
 
 ---
 
+## Known issues opened by the paper-clean refactor (2026-05-22)
+
+These are bugs / discrepancies found while building or first-running the new
+notebooks. None block the basic pipeline, but they should be addressed before
+the next paper-level pass.
+
+### ISSUE A -- `nmf_max_iter` regressed to 100 for two notebooks
+- `notebooks/LickingVsNonLicking_3band.ipynb` Section 2 sets `NMF_MAX_ITER = 100`.
+- `notebooks/LickingVsGrooming_3band.ipynb` Section 2 sets `NMF_MAX_ITER = 100`.
+- The original (pre-refactor) notebooks called `model.fit(..., nmf_max_iter=500)`
+  inline; my refactor copied the wrong value (100) from a different cell.
+- Affects the sklearn-NMF inner-solver iteration cap during the joint fit;
+  could change the final W weights slightly relative to the published
+  `Maternal_model_lick_*_Dec19_*.pt` checkpoints.
+- The other four notebooks correctly carry their original
+  `nmf_max_iter` value (100 for 3-band Onnest/Stage; 500 for the two 1-Hz
+  notebooks).
+- **Fix**: change `NMF_MAX_ITER = 100` -> `NMF_MAX_ITER = 500` in Section 2 of
+  the two Licking notebooks; re-run Section 2 and Section 3 to regenerate
+  the .pt files; commit + push as a small patch.
+
+### Fix already shipped in `cbd725a`
+
+For future reference (so the next session doesn't re-find the same bug):
+
+- **`run_loo_cv` y-shape bug** -- the original draft of
+  `src/training.py` had `y_arr = np.asarray(y_data).ravel()` at the top of
+  `run_loo_cv`, but `dCSFA_NMF.skl_pretrain` (and `fit`) needs `y` to be 2-D
+  shape `(n, n_sup_networks)`. Surfaced as
+  `IndexError: too many indices for array` on the first pilot run.
+  Fixed in `src/training.py` lines 219-223 (`reshape(-1, 1)` when
+  `ndim == 1`); per-fold `y_test.ravel()` for `roc_auc_score`/`np.sum`
+  in `_run_one_fold`.
+
+---
+
 ## Final repo state (snapshot)
 
 - **GitHub**: https://github.com/ElaineYilinW/maternal-electome-EF (public)
