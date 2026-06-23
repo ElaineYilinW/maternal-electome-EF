@@ -306,10 +306,18 @@ def create_dot_heatmap(abs_df, abs_df_cut, rel_df, rel_df_cut, both_df_cut):
 
     ax.set_facecolor('white')
 
-    # Tick labels (only first character of column name; original behavior)
+    # Tick labels. The legacy 3-band code took only the first element of each
+    # column label because the labels were short (lo, hi) tuples. For 1-Hz
+    # input, columns are scalar integer bins; fall back to ``str(col)`` so the
+    # function works for both shapes.
+    def _short_col_label(c):
+        if isinstance(c, (tuple, list)) and len(c) > 0:
+            return str(c[0])
+        return str(c)
+
     ax.set_xticks(np.arange(len(abs_df.columns)))
     ax.set_yticks(np.arange(len(abs_df)))
-    ax.set_xticklabels([col[0] for col in abs_df.columns],
+    ax.set_xticklabels([_short_col_label(col) for col in abs_df.columns],
                        fontsize=11,
                        fontweight='bold',
                        rotation=0,
@@ -1440,4 +1448,243 @@ def create_group_visualizations(filtered_df, selected_mice, order):
     plt.tight_layout()
     plt.show()
 
+    return fig
+
+
+# =============================================================================
+# Vignette / general-purpose plot helpers
+# =============================================================================
+
+def plot_scree_W_nmf(W, k=0, threshold_ratio=0.9, ax=None):
+    """Scree plot: cumulative squared-L2 contribution vs number of selected
+    features, for factor ``k`` of ``W``.
+
+    The x-axis is the count of features sorted by descending squared
+    contribution; the y-axis is the cumulative fraction of total squared-L2
+    those features account for. A horizontal dotted line marks
+    ``threshold_ratio`` so the reader can see at a glance how many features
+    are needed to capture that fraction of the energy.
+
+    Parameters
+    ----------
+    W : torch.Tensor or np.ndarray
+        Decoder W matrix from ``model.get_W_nmf()``, shape (n_factors, n_features).
+    k : int
+        Which factor to inspect (default 0).
+    threshold_ratio : float
+        Where to draw the reference line (default 0.9 -- the cumulative-L2
+        cutoff used by :func:`analysis.process_W_nmf_k`).
+    ax : matplotlib.axes.Axes, optional
+        Plot into this axis; if None, a new figure is created.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    import torch as _torch
+    if isinstance(W, _torch.Tensor):
+        W = W.detach().cpu().numpy()
+    row = np.asarray(W[k, :], dtype=float)
+    squared = np.sort(row ** 2)[::-1]
+    cum = np.cumsum(squared)
+    cum_frac = cum / cum[-1]
+    n_to_thresh = int(np.searchsorted(cum_frac, threshold_ratio) + 1)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7, 4.5))
+    else:
+        fig = ax.figure
+
+    x = np.arange(1, len(cum_frac) + 1)
+    ax.plot(x, cum_frac, color='steelblue', linewidth=2)
+    ax.axhline(threshold_ratio, color='gray', linestyle=':', alpha=0.7,
+               label=f'threshold = {threshold_ratio:.2f}')
+    ax.axvline(n_to_thresh, color='firebrick', linestyle='--', alpha=0.7,
+               label=f'{n_to_thresh} features reach threshold')
+    ax.set_xlabel('Number of features selected (sorted by descending squared-L2)')
+    ax.set_ylabel('Cumulative fraction of total squared-L2')
+    ax.set_title(f'Scree plot — factor {k} of W')
+    ax.set_xlim(0, len(cum_frac))
+    ax.set_ylim(0, 1.02)
+    ax.grid(alpha=0.3)
+    ax.legend(loc='lower right')
+    return fig
+
+
+def plot_dual_filter(model, train_dict, *,
+                     abs_cum_ratio=0.9, rel_val=0.5, verbose=False):
+    """One-call wrapper around :func:`analysis.process_W_nmf_dual_filter` +
+    bar (3-band) or dot (1-Hz) heatmap selection.
+
+    The heatmap kind is chosen automatically based on the number of
+    frequency columns: 3-band data has 3 columns and uses the bar heatmap
+    (each bar is wide enough); 1-Hz data has 54 columns and switches to the
+    dot heatmap (the bars would otherwise overlap).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The heatmap figure.
+    abs_cut, rel_cut, both_cut, abs_full, rel_full : pd.DataFrame
+        The five DataFrames produced by
+        :func:`analysis.process_W_nmf_dual_filter`, for any follow-up
+        inspection.
+    """
+    # Local import to keep viz.py importable without analysis chain at import time
+    from analysis import process_W_nmf_dual_filter
+
+    W = model.get_W_nmf()
+    abs_cut, rel_cut, both_cut, abs_full, rel_full = process_W_nmf_dual_filter(
+        W, train_dict,
+        abs_cum_ratio=abs_cum_ratio, rel_val=rel_val,
+        verbose=verbose,
+    )
+    n_freq = abs_full.shape[1]
+    if n_freq <= 10:
+        fig = create_bar_heatmap_selective(abs_full, abs_cut, rel_full, rel_cut, both_cut)
+    else:
+        fig = create_dot_heatmap(abs_full, abs_cut, rel_full, rel_cut, both_cut)
+    return fig, abs_cut, rel_cut, both_cut, abs_full, rel_full
+
+
+def plot_per_mouse_timeseries(scores, period, mouse_ids,
+                              mouse_id_to_show=None, ax=None):
+    """Plot the per-window loading-score time series of a single mouse,
+    colored by period.
+
+    Parameters
+    ----------
+    scores : np.ndarray, shape (N,)
+        Per-window loading scores (output of
+        :func:`workflow.compute_loading_scores`).
+    period : np.ndarray, shape (N,)
+        Per-window period label (e.g. ``"P1"``, ``"P3"``).
+    mouse_ids : np.ndarray, shape (N,)
+        Per-window mouse id.
+    mouse_id_to_show : str, optional
+        Which mouse to plot. If None, the first one (sorted) is used.
+    ax : matplotlib.axes.Axes, optional
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    scores = np.asarray(scores).ravel()
+    period = np.asarray(period).ravel()
+    mouse_ids = np.asarray(mouse_ids).ravel()
+
+    if mouse_id_to_show is None:
+        mouse_id_to_show = sorted(set(mouse_ids))[0]
+    mask = mouse_ids == mouse_id_to_show
+    s_m = scores[mask]
+    p_m = period[mask]
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(11, 3.5))
+    else:
+        fig = ax.figure
+
+    x = np.arange(len(s_m))
+    ax.plot(x, s_m, color='gray', alpha=0.5, linewidth=0.7, zorder=1)
+
+    unique_p = sorted(set(p_m))
+    cmap = plt.get_cmap('tab10')
+    for i, p in enumerate(unique_p):
+        idx = np.where(p_m == p)[0]
+        ax.scatter(idx, s_m[idx], s=20, color=cmap(i % 10),
+                   label=str(p), zorder=2)
+
+    ax.set_xlabel('Window index (chronological)')
+    ax.set_ylabel('Loading score (factor 0)')
+    ax.set_title(f'Per-window loading score — mouse {mouse_id_to_show}')
+    ax.legend(title='Period', loc='best', fontsize=9)
+    ax.grid(alpha=0.3)
+    return fig
+
+
+def plot_per_stage_boxplot(scores, period, stages_order=None, ax=None):
+    """Box plot of loading scores grouped by period.
+
+    Parameters
+    ----------
+    scores : np.ndarray, shape (N,)
+    period : np.ndarray, shape (N,)
+    stages_order : list[str], optional
+        Order of periods on the x-axis. If None, the natural sorted order is
+        used.
+    ax : matplotlib.axes.Axes, optional
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    scores = np.asarray(scores).ravel()
+    period = np.asarray(period).ravel()
+    if stages_order is None:
+        stages_order = sorted(set(period))
+
+    data = [scores[period == p] for p in stages_order]
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7, 4.5))
+    else:
+        fig = ax.figure
+
+    bp = ax.boxplot(data, labels=stages_order, patch_artist=True,
+                    showfliers=False)
+    cmap = plt.get_cmap('tab10')
+    for i, patch in enumerate(bp['boxes']):
+        patch.set_facecolor(cmap(i % 10))
+        patch.set_alpha(0.7)
+
+    ax.set_xlabel('Period / stage')
+    ax.set_ylabel('Loading score (factor 0)')
+    ax.set_title('Per-stage loading-score distribution')
+    ax.grid(alpha=0.3, axis='y')
+    return fig
+
+
+def plot_per_mouse_auc_bar(aucs_dict, ax=None):
+    """Horizontal bar chart of per-mouse AUC values + a chance reference line.
+
+    Parameters
+    ----------
+    aucs_dict : dict[str, float]
+        Output of :func:`workflow.compute_per_mouse_auc`.
+    ax : matplotlib.axes.Axes, optional
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    if not aucs_dict:
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(6, 2))
+        else:
+            fig = ax.figure
+        ax.text(0.5, 0.5, "No valid per-mouse AUC (all mice single-class).",
+                ha='center', va='center', transform=ax.transAxes)
+        ax.set_axis_off()
+        return fig
+
+    names = sorted(aucs_dict.keys())
+    vals = [aucs_dict[n] for n in names]
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(7, max(2.5, 0.45 * len(names) + 1.5)))
+    else:
+        fig = ax.figure
+
+    colors = ['#1f77b4' if v >= 0.5 else '#d62728' for v in vals]
+    y = np.arange(len(names))
+    ax.barh(y, vals, color=colors, alpha=0.8)
+    ax.axvline(0.5, color='black', linestyle=':', alpha=0.6,
+               label='chance (AUC = 0.5)')
+    ax.set_yticks(y)
+    ax.set_yticklabels(names)
+    ax.set_xlim(0, 1)
+    ax.set_xlabel('Per-mouse AUC')
+    ax.set_title(f'Per-mouse AUC (n = {len(names)} mice with both classes)')
+    ax.legend(loc='lower right', fontsize=9)
+    ax.grid(alpha=0.3, axis='x')
     return fig

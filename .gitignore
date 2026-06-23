@@ -3,6 +3,10 @@
 *.pt
 *.mat
 
+# Exception: the 6 paper-active EF models in models/ ARE committed
+# (small, ~3 MB total, needed for the examples/vignette.ipynb walkthrough)
+!models/*.pt
+
 # Backup / dirty notebooks
 *_BACKUP.ipynb
 *_dirty*.ipynb

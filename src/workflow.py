@@ -16,6 +16,15 @@ to ~1-3 lines of code:
 
 All three are quiet: a one-line print summary is the only chatter, unless the
 caller asks for ``.per_mouse_table()`` or otherwise inspects the result object.
+
+This module also exposes two thin convenience wrappers used by the vignette
+and by anyone who wants to apply a frozen EF model to new data:
+
+    compute_loading_scores(model, X)   ->  first-loading-dim scores s[:, 0]
+                                           after putting the model in eval mode.
+    compute_per_mouse_auc(scores, y,
+                          mouse_ids)   ->  {mouse -> AUC}, NaN labels and
+                                           single-class mice skipped.
 """
 
 import os
@@ -336,3 +345,82 @@ def run_stage_backproject(model, *,
         fisher_combined_df=fisher_df,
         filtered_df=df,
     )
+
+
+# =============================================================================
+# Thin convenience wrappers for the vignette and ad-hoc use
+# =============================================================================
+
+def compute_loading_scores(model, X):
+    """Apply ``model`` to ``X`` and return the first loading-dimension score
+    ``s[:, 0]`` as a 1-D numpy array.
+
+    The model is put in evaluation mode and the forward pass is wrapped in
+    ``torch.no_grad()``; the caller does not need to manage either.
+
+    Parameters
+    ----------
+    model : dCSFA_NMF
+        Trained model with a ``predict_proba(..., include_scores=True)``
+        method (any of the six EF models in ``models/`` will do).
+    X : np.ndarray, shape (n_windows, dim_in)
+        Feature matrix already in the same order/scale as the training data
+        (i.e. hstack of power and squared coherence).
+
+    Returns
+    -------
+    np.ndarray, shape (n_windows,)
+        Per-window factor-0 loading score.
+    """
+    model.eval()
+    with torch.no_grad():
+        _, s = model.predict_proba(X, include_scores=True)
+    s = np.asarray(s)
+    if s.ndim == 1:
+        return s
+    return s[:, 0]
+
+
+def compute_per_mouse_auc(scores, y_true, mouse_ids):
+    """Per-mouse ROC-AUC of ``scores`` against ``y_true``, grouped by
+    ``mouse_ids``.
+
+    Mice with only a single class in ``y_true`` (after dropping NaN labels)
+    are skipped entirely. NaN entries in ``y_true`` are filtered out per
+    mouse so the same array can hold "no label" placeholders for stages where
+    the task does not apply (e.g. ``onnest_label`` is only defined for P1/P3/
+    P8 in the on-nest task).
+
+    Parameters
+    ----------
+    scores : np.ndarray, shape (n_windows,)
+        Per-window loading scores (output of :func:`compute_loading_scores`).
+    y_true : np.ndarray, shape (n_windows,)
+        Binary labels (0 / 1). May contain ``np.nan`` for windows where the
+        label is undefined; those windows are dropped per-mouse before AUC
+        computation.
+    mouse_ids : np.ndarray, shape (n_windows,)
+        Mouse identifier per window.
+
+    Returns
+    -------
+    dict[str, float]
+        Mapping from mouse id to per-mouse AUC. Mice without both classes
+        present are omitted entirely.
+    """
+    scores = np.asarray(scores).ravel()
+    y_true = np.asarray(y_true).ravel()
+    mouse_ids = np.asarray(mouse_ids).ravel()
+
+    out = {}
+    for mid in np.unique(mouse_ids):
+        mask = (mouse_ids == mid)
+        y_m = y_true[mask]
+        s_m = scores[mask]
+        # Drop NaN labels (windows where the task does not apply)
+        keep = ~np.isnan(y_m)
+        y_m, s_m = y_m[keep], s_m[keep]
+        if len(np.unique(y_m)) < 2:
+            continue  # single-class mouse -- AUC is undefined
+        out[str(mid)] = float(roc_auc_score(y_m, s_m))
+    return out
