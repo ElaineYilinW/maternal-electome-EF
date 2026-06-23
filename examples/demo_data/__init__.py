@@ -1,8 +1,8 @@
 """Loader for the vignette's fixed simulated dataset.
 
-The dataset itself is shipped in ``examples/demo_data/`` as two pickle
-files (``demo_3band.pkl`` and ``demo_1Hz.pkl``) generated once by
-``examples/generate_demo_data.py``. Every run of the vignette loads the
+The dataset itself sits next to this file as two pickle fixtures
+(``demo_3band.pkl`` and ``demo_1Hz.pkl``) produced once by
+``examples/demo_data/generate.py``. Every run of the vignette loads the
 exact same bytes off disk; nothing is randomized at load time and no
 model is consulted.
 
@@ -24,7 +24,6 @@ import pickle
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_DEMO_DIR = os.path.join(_HERE, 'demo_data')
 
 _FILES = {
     '3band': 'demo_3band.pkl',
@@ -63,6 +62,6 @@ def load_demo_data(freq='3band'):
         raise ValueError(
             f"freq must be one of {list(_FILES)}, got {freq!r}"
         )
-    path = os.path.join(_DEMO_DIR, _FILES[freq])
+    path = os.path.join(_HERE, _FILES[freq])
     with open(path, 'rb') as f:
         return pickle.load(f)

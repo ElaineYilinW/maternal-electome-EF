@@ -1,14 +1,14 @@
 """One-shot generator for the vignette's fixed simulated dataset.
 
-Run this once to produce ``examples/demo_data/demo_3band.pkl`` and
-``examples/demo_data/demo_1Hz.pkl``. The vignette then just loads those
-files via :func:`simulated_data.load_demo_data` -- no per-run randomness,
+Run this once to produce ``demo_3band.pkl`` and ``demo_1Hz.pkl`` in
+this directory. The vignette then just loads those files via
+``from demo_data import load_demo_data`` -- no per-run randomness,
 no model dependency, identical bytes on every reader's machine.
 
 Usage::
 
     cd Rainbo-code
-    python examples/generate_demo_data.py
+    python examples/demo_data/generate.py
 
 Re-run only if you want to regenerate the fixture (e.g. you changed the
 LFP-shape distribution or the signal-injection scheme).
@@ -109,9 +109,7 @@ def _build_dataset(freq_band, n_mice=3, windows_per_mouse=50,
 
 
 def main():
-    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           'demo_data')
-    os.makedirs(out_dir, exist_ok=True)
+    out_dir = os.path.dirname(os.path.abspath(__file__))
 
     for name, freq_band in [('3band', DEFAULT_FREQ_BAND_3BAND),
                             ('1Hz', DEFAULT_FREQ_BAND_1HZ)]:
