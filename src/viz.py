@@ -1526,33 +1526,39 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.8, 0.9, 0.95), n_power_rows=8,
     else:
         fig = ax.figure
 
+    # Scale to a "10^exp" multiplier embedded in the y-label so ticks read
+    # e.g. "1.0 / 2.0" instead of "0.01 / 0.02".
+    ymax_abs = float(np.max(np.abs(sorted_values))) if n_features else 0.0
+    exponent = int(np.floor(np.log10(ymax_abs))) if ymax_abs > 0 else 0
+    scale = 10.0 ** (-exponent)
+    sorted_values_scaled = sorted_values * scale
+
     # Plot power features (triangles) and coherence features (circles) on top
     is_power = orig_row < n_power_rows
     x = np.arange(n_features)
-    ax.scatter(x[is_power], sorted_values[is_power], marker='^', s=60,
+    ax.scatter(x[is_power], sorted_values_scaled[is_power], marker='^', s=60,
                color='steelblue', edgecolors='black', linewidths=0.5,
                alpha=0.8, label='Power', zorder=3)
-    ax.scatter(x[~is_power], sorted_values[~is_power], marker='o', s=50,
+    ax.scatter(x[~is_power], sorted_values_scaled[~is_power], marker='o', s=50,
                color='lightcoral', edgecolors='black', linewidths=0.5,
                alpha=0.8, label='Coherence', zorder=3)
 
     # Threshold vertical lines
-    ymax = sorted_values.max() if sorted_values.max() > 0 else 1.0
+    ymax = sorted_values_scaled.max() if sorted_values_scaled.max() > 0 else 1.0
     for t, idx in zip(thresholds, thr_indices):
         ax.axvline(idx, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
         ax.text(idx, ymax, f'cum. L²={t:.2f}', rotation=90,
                 va='top', ha='right', color='green', fontsize=9)
 
     ax.set_xlabel(f'Sorted feature index (n = {n_features})')
-    ax.set_ylabel(f'Element value in W[{k}]')
+    if exponent == 0:
+        ax.set_ylabel(f'Element value in W[{k}]')
+    else:
+        ax.set_ylabel(rf'Element value in W[{k}] (×$10^{{{exponent}}}$)')
     ax.set_title(f'Scree plot — factor {k} sorted entries')
     ax.set_xlim(-2, n_features + 1)
     ax.grid(alpha=0.3)
     ax.legend(loc='upper right')
-    # Element values are usually small (~10⁻²). Use scientific-notation tick
-    # labels so the y-axis reads "5" with a "×10⁻²" exponent instead of "0.05".
-    ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0),
-                        useMathText=True)
     return fig
 
 
@@ -1630,24 +1636,21 @@ def plot_per_mouse_timeseries(scores, period, mouse_ids,
         fig = ax.figure
 
     x = np.arange(len(s_m))
-    ax.plot(x, s_m, color='gray', alpha=0.5, linewidth=0.7, zorder=1)
+    s_m_scaled = s_m * 1e3
+    ax.plot(x, s_m_scaled, color='gray', alpha=0.5, linewidth=0.7, zorder=1)
 
     unique_p = sorted(set(p_m))
     cmap = plt.get_cmap('tab10')
     for i, p in enumerate(unique_p):
         idx = np.where(p_m == p)[0]
-        ax.scatter(idx, s_m[idx], s=20, color=cmap(i % 10),
+        ax.scatter(idx, s_m_scaled[idx], s=20, color=cmap(i % 10),
                    label=str(p), zorder=2)
 
     ax.set_xlabel('Window index (chronological)')
-    ax.set_ylabel('Loading score (factor 0)')
+    ax.set_ylabel(r'Loading score (×$10^{-3}$, factor 0)')
     ax.set_title(f'Per-window loading score — mouse {mouse_id_to_show}')
     ax.legend(title='Period', loc='best', fontsize=9)
     ax.grid(alpha=0.3)
-    # Show small loading-score values in scientific notation (e.g. "5" with
-    # a "×10⁻³" exponent in the corner) instead of the default "0.005".
-    ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0),
-                        useMathText=True)
     return fig
 
 
@@ -1672,7 +1675,7 @@ def plot_per_stage_boxplot(scores, period, stages_order=None, ax=None):
     if stages_order is None:
         stages_order = sorted(set(period))
 
-    data = [scores[period == p] for p in stages_order]
+    data = [scores[period == p] * 1e3 for p in stages_order]
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(7, 4.5))
@@ -1687,11 +1690,9 @@ def plot_per_stage_boxplot(scores, period, stages_order=None, ax=None):
         patch.set_alpha(0.7)
 
     ax.set_xlabel('Period / stage')
-    ax.set_ylabel('Loading score (factor 0)')
+    ax.set_ylabel(r'Loading score (×$10^{-3}$, factor 0)')
     ax.set_title('Per-stage loading-score distribution')
     ax.grid(alpha=0.3, axis='y')
-    ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0),
-                        useMathText=True)
     return fig
 
 
