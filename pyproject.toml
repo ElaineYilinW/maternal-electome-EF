@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "electome"
+version = "0.1.0"
+description = "Maternal Electome Factors — dCSFA-NMF code & paper-active models"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Elaine Yilin Wang" },
+]
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    # Core scientific stack
+    "numpy>=1.20",
+    "pandas>=1.4",
+    "scipy>=1.7",
+    "scikit-learn>=1.0",
+    # Deep learning
+    "torch>=1.10",
+    # Provides torchbd.loss.BetaDivLoss
+    "beta-divergence-metrics",
+    # Plotting
+    "matplotlib>=3.5",
+    "seaborn>=0.11",
+    # Utilities
+    "tqdm>=4.62",
+    "joblib>=1.1",
+    "openpyxl>=3.0",
+    # Jupyter for the examples/demo.ipynb walkthrough
+    "jupyter",
+    "notebook",
+    # Carlson Lab LFP utilities (GitHub-only, not on PyPI)
+    "lpne @ git+https://github.com/carlson-lab/lpne.git",
+]
+
+[project.urls]
+Homepage = "https://github.com/ElaineYilinW/maternal-electome-EF"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["electome*"]

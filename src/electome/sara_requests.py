@@ -31,7 +31,7 @@ import torch
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
-from data_utils import clean_mouse_id
+from .data_utils import clean_mouse_id
 
 
 # =============================================================================

@@ -211,7 +211,7 @@ def run_loo_cv(X_data, y_data, mouse_ids_data, *,
     """
     if dCSFA_NMF_class is None:
         # Lazy import so this module is importable even when dCSFA_NMF_Ver3 is not
-        from dCSFA_NMF_Ver3 import dCSFA_NMF as _D
+        from .dCSFA_NMF_Ver3 import dCSFA_NMF as _D
         dCSFA_NMF_class = _D
 
     # dCSFA-NMF expects y as 2D (n, n_sup_networks). Reshape to (n, 1) if the
@@ -306,7 +306,7 @@ def train_final_model(X_train, y_train, y_sampling_train, *,
         ``model.train_total_hist`` etc., for callers that want it).
     """
     if dCSFA_NMF_class is None:
-        from dCSFA_NMF_Ver3 import dCSFA_NMF as _D
+        from .dCSFA_NMF_Ver3 import dCSFA_NMF as _D
         dCSFA_NMF_class = _D
 
     params = dict(model_params)

@@ -8,7 +8,7 @@ file holds a full Python pickle of a trained `dCSFA_NMF` instance (see
 `torch.load("models/<name>.pt", map_location="cpu")` returns an evaluable
 model object; from there you can call `model.predict_proba(X, include_scores=True)`
 to obtain loading scores or `model.get_W_nmf()` to inspect the per-feature
-decoder weights. See `examples/vignette.ipynb` for a runnable end-to-end demo
+decoder weights. See `examples/demo.ipynb` for a runnable end-to-end demo
 on simulated data.
 
 ---
@@ -160,7 +160,7 @@ Use `model.state_dict()` if you need it.
 ## Where to start
 
 * **Just want to use the models?** Open
-  `examples/vignette.ipynb` — it shows how to load any of the six, project new
+  `examples/demo.ipynb` — it shows how to load any of the six, project new
   data through the encoder to obtain loading scores, compute per-mouse AUC,
   and produce the scree and dual-filter element-selection plots.
 * **Want to retrain or reproduce?** Each task has a corresponding notebook

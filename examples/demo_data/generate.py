@@ -1,7 +1,7 @@
-"""One-shot generator for the vignette's fixed simulated dataset.
+"""One-shot generator for the demo's fixed simulated dataset.
 
 Run this once to produce ``demo_3band.pkl`` and ``demo_1Hz.pkl`` in
-this directory. The vignette then just loads those files via
+this directory. The demo then just loads those files via
 ``from demo_data import load_demo_data`` -- no per-run randomness,
 no model dependency, identical bytes on every reader's machine.
 

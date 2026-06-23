@@ -1,13 +1,13 @@
-"""Loader for the vignette's fixed simulated dataset.
+"""Loader for the demo's fixed simulated dataset.
 
 The dataset itself sits next to this file as two pickle fixtures
 (``demo_3band.pkl`` and ``demo_1Hz.pkl``) produced once by
-``examples/demo_data/generate.py``. Every run of the vignette loads the
+``examples/demo_data/generate.py``. Every run of the demo loads the
 exact same bytes off disk; nothing is randomized at load time and no
 model is consulted.
 
 The dataset is intentionally tiny (3 fake mice × 50 windows each, spread
-across 5 maternal stages = 150 windows) so the vignette renders in
+across 5 maternal stages = 150 windows) so the demo renders in
 seconds. Features are LFP-shaped (lognormal per-band powers,
 beta-distributed squared coherences) and ``onnest_label`` is populated
 for windows in ``P1`` / ``P3`` / ``P8`` so the per-mouse AUC computation

@@ -15,9 +15,21 @@ each in both a 3-band and a 1-Hz-frequency-step variant.
 ```
 .
 ├── README.md
-├── requirements.txt
+├── pyproject.toml                       Package metadata + dependency list (PEP 621)
+├── setup.py                             Shim so older pip can still `pip install -e .`
+├── requirements.txt                     Plain-text mirror of pyproject deps for `pip install -r`
 ├── CLEANUP_LOG.md                       Decision log for the paper-prep refactor
 ├── .gitignore
+│
+├── models/                              The 6 paper-active dCSFA-NMF .pt files + README
+│
+├── examples/
+│   ├── demo.ipynb                       Runnable walkthrough: load EF model -> apply -> 6 paper figures
+│   └── demo_data/                       Fixed simulated fixture used by demo.ipynb
+│       ├── __init__.py                  `load_demo_data('3band'|'1Hz')` loader
+│       ├── generate.py                  One-shot generator that produced the pickles
+│       ├── demo_3band.pkl
+│       └── demo_1Hz.pkl
 │
 ├── notebooks/                           One notebook per EF task (paper-clean, ~20 cells / ~150 LoC each)
 │   ├── 00_data_preprocessing.ipynb      Feature extraction from raw LFP -> .pkl files
@@ -28,7 +40,7 @@ each in both a 3-band and a 1-Hz-frequency-step variant.
 │   ├── PreVsPost134_3band.ipynb         Maternal stage EF: Pre vs PD1/PD3/PD4
 │   └── PreVsPost134_1Hz.ipynb           Same task, 1-Hz steps
 │
-└── src/
+└── src/electome/                        The `electome` Python package (pip-installable from repo root)
     │  --- Model code ---
     ├── dCSFA_NMF_Ver1.py                Model implementation (v1.3 - Early stopping, fixes)
     ├── dCSFA_NMF_Ver3.py                Model implementation (v1.4 - val eval/train fix, sup_weight auto-adjust)
@@ -43,7 +55,8 @@ each in both a 3-band and a 1-Hz-frequency-step variant.
     ├── analysis.py                      AUC computations, W_nmf feature selection, permutation/Wilcoxon/Fisher tests
     ├── viz.py                           Bar/dot heatmaps, per-mouse loading-score plot, 4-panel stage-backproject figure (+ 10-sheet xlsx)
     ├── training.py                      run_loo_cv (parallel LOO + Wilcoxon vs chance), train_final_model
-    ├── workflow.py                      validate_on_ELS, run_circos_prep, run_stage_backproject (notebook-section wrappers)
+    ├── workflow.py                      validate_on_ELS, run_circos_prep, run_stage_backproject (notebook-section wrappers); compute_loading_scores, compute_per_mouse_auc
+    ├── models_registry.py               `load_ef_model(name)` loader + per-model hyperparameter metadata
     └── sara_requests.py                 Off-paper one-off data exports (pup retrieval, on-nest loading inspect, P3 behavior)
 ```
 
@@ -63,9 +76,10 @@ per-mouse diagnostics:
 | 7. Stage backprojection | Project to every stage, median+IQR figure + 10-sheet xlsx + 5 CSVs | `workflow.run_stage_backproject` |
 | 8. Sara's requests (off-paper) | One-off xlsx exports requested by collaborators | `sara_requests.sara_pup_retrieval` (+ `sara_onnest_loading_inspect`, `sara_p3_behavior` in the Onnest notebooks) |
 
-The first code cell of each notebook adds `../src` to `sys.path` and imports
-the modules above, so all later sections read as a clean parameter block +
-a one-line function call.
+Each notebook's first code cell does `from electome.<module> import ...` —
+after `pip install -e .` the package is importable from anywhere, so no
+`sys.path` manipulation is needed. The rest of the notebook then reads as a
+clean parameter block + a one-line function call per section.
 
 ---
 
@@ -94,17 +108,32 @@ related behavior contrasts (cross-task backproject).
 
 ## Quick start
 
+The fastest way to see the trained models in action is the runnable demo
+in [`examples/demo.ipynb`](examples/demo.ipynb), which loads one of the
+six paper-active EFs, applies it to a tiny shipped simulated dataset, and
+draws every plot used in the paper (per-mouse loading-score time series,
+scree plot, dual-filter heatmap). No RDSS access required.
+
 ```bash
-git clone <repo-url>
-cd <repo>
+git clone https://github.com/ElaineYilinW/maternal-electome-EF.git
+cd maternal-electome-EF
 
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 
-# Mount RDSS data share at /Volumes/rdss_rhultman/ before running.
-# Raw LFP and intermediate .pkl files are not in this repo.
+# Installs the `electome` package in editable mode (so
+# `from electome.models_registry import load_ef_model` works from
+# anywhere) plus all dependencies.
+pip install -e .
 
+jupyter notebook examples/demo.ipynb
+```
+
+To train new models from scratch on the lab data, follow the six task
+notebooks under `notebooks/` instead — those do require RDSS access for
+the raw LFP feature pickles. Mount `/Volumes/rdss_rhultman/` first, then:
+
+```bash
 jupyter notebook notebooks/00_data_preprocessing.ipynb
 ```
 
@@ -141,9 +170,9 @@ This project extends prior work:
 
 - **dCSFA-NMF model** — Carlson Lab at Duke University
   (https://github.com/carlson-lab/dCSFA-NMF).
-  Our `src/dCSFA_NMF_Ver1.py` and `src/dCSFA_NMF_Ver3.py` are modified versions
+  Our `src/electome/dCSFA_NMF_Ver1.py` and `src/electome/dCSFA_NMF_Ver3.py` are modified versions
   of the upstream `dCSFA_NMF.py` (see *Modifications* below).
-- **`src/umc_data_tools.py`** — bundled verbatim from the same Carlson Lab
+- **`src/electome/umc_data_tools.py`** — bundled verbatim from the same Carlson Lab
   repository (no modification); provides LFP / feature-pipeline utilities.
 - **`beta-divergence-metrics`** (imported as `torchbd`) — Billy Carson,
   Duke BME (https://github.com/wecarsoniv/beta-divergence-metrics,
@@ -154,12 +183,12 @@ This project extends prior work:
 ## Modifications vs. upstream `dCSFA_NMF.py`
 
 > **Note:** The list below summarises the main fixes recorded in the file-header
-> changelogs of `src/dCSFA_NMF_Ver1.py` and `src/dCSFA_NMF_Ver3.py`. It is **not
+> changelogs of `src/electome/dCSFA_NMF_Ver1.py` and `src/electome/dCSFA_NMF_Ver3.py`. It is **not
 > exhaustive** — a full line-by-line diff against the upstream
 > `carlson-lab/dCSFA-NMF` `dCSFA_NMF.py` reveals additional differences that
 > have not yet been documented here. To be completed.
 
-### `src/dCSFA_NMF_Ver1.py` (v1.3)
+### `src/electome/dCSFA_NMF_Ver1.py` (v1.3)
 - **Early stopping** in `fit()` (`patience`, `min_delta`); best-model
   checkpointing and reload at end of training
 - **Train/Val loss accounting**: both recorded as per-batch means (previously
@@ -170,7 +199,7 @@ This project extends prior work:
 - **`skl_pretrain`**: `random_state=42` for reproducible sklearn-NMF
   pretraining initialization
 
-### `src/dCSFA_NMF_Ver3.py` (v1.4)
+### `src/electome/dCSFA_NMF_Ver3.py` (v1.4)
 On top of Ver1 fixes, adds:
 - **`eval()` / `train()` toggle** correctly applied during validation forward
   pass — `BatchNorm1d` now uses running stats instead of val-batch stats

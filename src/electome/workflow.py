@@ -17,7 +17,7 @@ to ~1-3 lines of code:
 All three are quiet: a one-line print summary is the only chatter, unless the
 caller asks for ``.per_mouse_table()`` or otherwise inspects the result object.
 
-This module also exposes two thin convenience wrappers used by the vignette
+This module also exposes two thin convenience wrappers used by the demo
 and by anyone who wants to apply a frozen EF model to new data:
 
     compute_loading_scores(model, X)   ->  first-loading-dim scores s[:, 0]
@@ -38,13 +38,13 @@ import torch
 from scipy.stats import wilcoxon
 from sklearn.metrics import roc_auc_score
 
-from data_utils import (
+from .data_utils import (
     assign_mouse_type,
     categorize_period_six_groups,
     clean_mouse_id,
     filter_target_mice_with_3plus_stages,
 )
-from viz import create_four_visualizations_with_tables
+from .viz import create_four_visualizations_with_tables
 
 
 # =============================================================================
@@ -348,7 +348,7 @@ def run_stage_backproject(model, *,
 
 
 # =============================================================================
-# Thin convenience wrappers for the vignette and ad-hoc use
+# Thin convenience wrappers for the demo and ad-hoc use
 # =============================================================================
 
 def compute_loading_scores(model, X):

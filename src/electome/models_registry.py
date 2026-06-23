@@ -156,18 +156,18 @@ def get_model_info(name):
 def _find_models_dir():
     """Locate the ``models/`` directory of the repository.
 
-    Search order:
-        1. ``<this file>/../../models``      (when imported from src/)
-        2. ``./models``                       (when imported from repo root)
-        3. ``./../models``                    (when imported from notebooks/)
-        4. ``./../../models``                 (when imported from examples/)
+    The package itself lives at ``<repo>/src/electome/`` after the
+    ``pip install -e .`` move, so the canonical answer is two parents up
+    from this file. We still fall back to a few CWD-relative candidates
+    so the function keeps working if the user ships a wheel and copies
+    ``models/`` next to wherever they launch from.
 
     Returns the first existing path. Raises ``FileNotFoundError`` if none
     exist (in which case the caller can pass ``models_dir=...`` explicitly).
     """
     here = Path(__file__).resolve().parent
     candidates = [
-        here.parent / "models",                 # <repo>/src/.. /models
+        here.parent.parent / "models",          # <repo>/src/electome/../../models
         Path.cwd() / "models",
         Path.cwd().parent / "models",
         Path.cwd().parent.parent / "models",
@@ -215,13 +215,11 @@ def load_ef_model(name, models_dir=None, map_location="cpu"):
             f"live in models/; see models/README.md."
         )
 
-    # Make sure dCSFA_NMF is importable so torch.load can resolve the pickled
-    # class. The src/ folder is normally on sys.path already; if not, add it.
-    import sys
-    src_dir = Path(__file__).resolve().parent
-    if str(src_dir) not in sys.path:
-        sys.path.insert(0, str(src_dir))
-    import dCSFA_NMF_Ver3  # noqa: F401 — needed for pickle to resolve the class
+    # Importing the package registers ``dCSFA_NMF_Ver3`` and ``_Ver1`` under
+    # their original top-level names in ``sys.modules`` (see electome.__init__),
+    # which is what the pickled ``.pt`` files reference. So torch.load resolves
+    # the class regardless of which path the user actually imports from.
+    import electome  # noqa: F401
 
     model = torch.load(path, map_location=map_location)
     return model

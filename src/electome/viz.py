@@ -66,7 +66,7 @@ from matplotlib.cm import ScalarMappable
 # The notebooks add src/ to sys.path (see the first cell of each notebook), so
 # sibling modules are importable by their bare name -- src/ is not a Python
 # package on disk. Keep this an absolute (not relative) import.
-from analysis import (
+from .analysis import (
     exact_permutation_test_hl,
     exact_permutation_test_median_diff,
     fisher_combine_pvalues,
@@ -1582,7 +1582,7 @@ def plot_dual_filter(model, train_dict, *,
         inspection.
     """
     # Local import to keep viz.py importable without analysis chain at import time
-    from analysis import process_W_nmf_dual_filter
+    from .analysis import process_W_nmf_dual_filter
 
     W = model.get_W_nmf()
     abs_cut, rel_cut, both_cut, abs_full, rel_full = process_W_nmf_dual_filter(

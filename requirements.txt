@@ -20,6 +20,10 @@ tqdm==4.62.3
 joblib==1.1.0
 openpyxl==3.0.9
 
+# Jupyter (for examples/demo.ipynb and the 6 task notebooks)
+jupyter
+notebook
+
 # Carlson Lab LFP utilities (GitHub-only, NOT on PyPI)
 # Provides lpne.load_lfps() used by notebooks/00_data_preprocessing.ipynb
 # Sections 2 and 6 (Welch feature extraction from raw .mat files).
