@@ -1455,27 +1455,36 @@ def create_group_visualizations(filtered_df, selected_mice, order):
 # Vignette / general-purpose plot helpers
 # =============================================================================
 
-def plot_scree_W_nmf(W, k=0, threshold_ratio=0.9, ax=None):
-    """Scree plot: cumulative squared-L2 contribution vs number of selected
-    features, for factor ``k`` of ``W``.
+def plot_scree_W_nmf(W, k=0, thresholds=(0.8, 0.9, 0.95), n_power_rows=8,
+                     ax=None):
+    """Sorted element-value "scree" plot for factor ``k`` of ``W``.
 
-    The x-axis is the count of features sorted by descending squared
-    contribution; the y-axis is the cumulative fraction of total squared-L2
-    those features account for. A horizontal dotted line marks
-    ``threshold_ratio`` so the reader can see at a glance how many features
-    are needed to capture that fraction of the energy.
+    Each entry of ``W[k, :]`` is drawn as a marker at its rank position (after
+    sorting the entries by descending value). Marker shape distinguishes
+    power features (``^``, the first ``n_power_rows * num_freqs`` entries when
+    W is reshaped to (36, num_freqs)) from coherence features (``o``).
+    Vertical dashed lines mark the rank index at which the cumulative
+    squared-L2 of the sorted-by-value entries crosses each threshold in
+    ``thresholds``.
+
+    This is the "scree" view used in the paper: it shows the raw distribution
+    of feature contributions, so the reader can see the elbow directly,
+    rather than the integrated CDF.
 
     Parameters
     ----------
     W : torch.Tensor or np.ndarray
-        Decoder W matrix from ``model.get_W_nmf()``, shape (n_factors, n_features).
+        Decoder weight matrix from ``model.get_W_nmf()``, shape
+        (n_factors, n_features).
     k : int
         Which factor to inspect (default 0).
-    threshold_ratio : float
-        Where to draw the reference line (default 0.9 -- the cumulative-L2
-        cutoff used by :func:`analysis.process_W_nmf_k`).
+    thresholds : iterable[float]
+        Cumulative squared-L2 thresholds to mark with vertical guides.
+        Defaults to ``(0.8, 0.9, 0.95)`` to match the paper figures.
+    n_power_rows : int
+        How many of the 36 (region + region_pair) rows are power features
+        (default 8 -- 8 regions). The rest are coherence (28 region pairs).
     ax : matplotlib.axes.Axes, optional
-        Plot into this axis; if None, a new figure is created.
 
     Returns
     -------
@@ -1485,29 +1494,65 @@ def plot_scree_W_nmf(W, k=0, threshold_ratio=0.9, ax=None):
     if isinstance(W, _torch.Tensor):
         W = W.detach().cpu().numpy()
     row = np.asarray(W[k, :], dtype=float)
-    squared = np.sort(row ** 2)[::-1]
-    cum = np.cumsum(squared)
-    cum_frac = cum / cum[-1]
-    n_to_thresh = int(np.searchsorted(cum_frac, threshold_ratio) + 1)
+    n_features = len(row)
+
+    # Reshape to (36, num_freqs) to recover (row, col) = (region/pair, freq)
+    # indices for each entry, so we can mark "power" vs "coherence".
+    total_rows = n_power_rows + 28
+    num_freqs = n_features // total_rows
+    assert n_features == total_rows * num_freqs, (
+        f"W[{k}] length {n_features} not divisible by 36"
+    )
+
+    # Sort by descending value
+    sorted_idx = np.argsort(row)[::-1]
+    sorted_values = row[sorted_idx]
+    # Recover original (row_index, col_index) for each sorted entry
+    orig_row, orig_col = np.unravel_index(sorted_idx, (total_rows, num_freqs))
+
+    # Cumulative-squared-L2 thresholds
+    squared = row ** 2
+    sorted_sq = squared[sorted_idx]
+    cum = np.cumsum(sorted_sq)
+    total_sq = cum[-1] if cum[-1] > 0 else 1.0
+    cum_frac = cum / total_sq
+    thr_indices = []
+    for t in thresholds:
+        idx_arr = np.where(cum_frac >= t)[0]
+        thr_indices.append(int(idx_arr[0]) if len(idx_arr) else n_features - 1)
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(7, 4.5))
+        fig, ax = plt.subplots(figsize=(9, 5.5))
     else:
         fig = ax.figure
 
-    x = np.arange(1, len(cum_frac) + 1)
-    ax.plot(x, cum_frac, color='steelblue', linewidth=2)
-    ax.axhline(threshold_ratio, color='gray', linestyle=':', alpha=0.7,
-               label=f'threshold = {threshold_ratio:.2f}')
-    ax.axvline(n_to_thresh, color='firebrick', linestyle='--', alpha=0.7,
-               label=f'{n_to_thresh} features reach threshold')
-    ax.set_xlabel('Number of features selected (sorted by descending squared-L2)')
-    ax.set_ylabel('Cumulative fraction of total squared-L2')
-    ax.set_title(f'Scree plot — factor {k} of W')
-    ax.set_xlim(0, len(cum_frac))
-    ax.set_ylim(0, 1.02)
+    # Plot power features (triangles) and coherence features (circles) on top
+    is_power = orig_row < n_power_rows
+    x = np.arange(n_features)
+    ax.scatter(x[is_power], sorted_values[is_power], marker='^', s=60,
+               color='steelblue', edgecolors='black', linewidths=0.5,
+               alpha=0.8, label='Power', zorder=3)
+    ax.scatter(x[~is_power], sorted_values[~is_power], marker='o', s=50,
+               color='lightcoral', edgecolors='black', linewidths=0.5,
+               alpha=0.8, label='Coherence', zorder=3)
+
+    # Threshold vertical lines
+    ymax = sorted_values.max() if sorted_values.max() > 0 else 1.0
+    for t, idx in zip(thresholds, thr_indices):
+        ax.axvline(idx, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.text(idx, ymax, f'cum. L²={t:.2f}', rotation=90,
+                va='top', ha='right', color='green', fontsize=9)
+
+    ax.set_xlabel(f'Sorted feature index (n = {n_features})')
+    ax.set_ylabel(f'Element value in W[{k}]')
+    ax.set_title(f'Scree plot — factor {k} sorted entries')
+    ax.set_xlim(-2, n_features + 1)
     ax.grid(alpha=0.3)
-    ax.legend(loc='lower right')
+    ax.legend(loc='upper right')
+    # Element values are usually small (~10⁻²). Use scientific-notation tick
+    # labels so the y-axis reads "5" with a "×10⁻²" exponent instead of "0.05".
+    ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0),
+                        useMathText=True)
     return fig
 
 
@@ -1599,6 +1644,10 @@ def plot_per_mouse_timeseries(scores, period, mouse_ids,
     ax.set_title(f'Per-window loading score — mouse {mouse_id_to_show}')
     ax.legend(title='Period', loc='best', fontsize=9)
     ax.grid(alpha=0.3)
+    # Show small loading-score values in scientific notation (e.g. "5" with
+    # a "×10⁻³" exponent in the corner) instead of the default "0.005".
+    ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0),
+                        useMathText=True)
     return fig
 
 
@@ -1641,6 +1690,8 @@ def plot_per_stage_boxplot(scores, period, stages_order=None, ax=None):
     ax.set_ylabel('Loading score (factor 0)')
     ax.set_title('Per-stage loading-score distribution')
     ax.grid(alpha=0.3, axis='y')
+    ax.ticklabel_format(axis='y', style='sci', scilimits=(0, 0),
+                        useMathText=True)
     return fig
 
 
