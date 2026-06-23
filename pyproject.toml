@@ -18,26 +18,41 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    # Core scientific stack
-    "numpy>=1.20",
-    "pandas>=1.4",
-    "scipy>=1.7",
-    "scikit-learn>=1.0",
-    # Deep learning
-    "torch>=1.10",
-    # Provides torchbd.loss.BetaDivLoss
+    # Core scientific stack -- versions match those the paper models were
+    # trained with. torch in particular: the pickled .pt files in models/
+    # were saved by torch 1.10 and the ParameterList layout changed in
+    # torch 2.x, so an upper bound is required for the demo to unpickle.
+    # 1.20.1 was the original lab pin; bumping to 1.21.6 because newer
+    # Pillow (a matplotlib transitive dep) imports numpy.typing.NDArray,
+    # added in numpy 1.21. 1.20→1.21 ABI is compatible so no model risk.
+    "numpy==1.21.6",
+    "pandas==1.4.1",
+    "scipy==1.7.3",
+    "scikit-learn==1.0.2",
+    "torch==1.10.0",
+    # Provides torchbd.loss.BetaDivLoss for the NMF reconstruction loss
     "beta-divergence-metrics",
     # Plotting
-    "matplotlib>=3.5",
-    "seaborn>=0.11",
+    "matplotlib==3.5.1",
+    "seaborn==0.11.2",
     # Utilities
-    "tqdm>=4.62",
-    "joblib>=1.1",
-    "openpyxl>=3.0",
+    "tqdm==4.62.3",
+    "joblib==1.1.0",
+    "openpyxl==3.0.9",
     # Jupyter for the examples/demo.ipynb walkthrough
     "jupyter",
     "notebook",
-    # Carlson Lab LFP utilities (GitHub-only, not on PyPI)
+]
+
+[project.optional-dependencies]
+# Carlson Lab LFP utilities, only needed by
+# notebooks/00_data_preprocessing.ipynb (the raw .mat -> .pkl feature
+# extraction step). The lpne setup.py imports numpy at build time, so
+# it cannot live in the core `dependencies` list -- pip would try to
+# build lpne before installing numpy and fail. Install with::
+#
+#     pip install -e ".[preprocessing]"
+preprocessing = [
     "lpne @ git+https://github.com/carlson-lab/lpne.git",
 ]
 
