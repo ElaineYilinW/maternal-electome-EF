@@ -150,6 +150,8 @@ pip install -e .
 jupyter notebook examples/demo.ipynb
 ```
 
+On Windows, replace `source .venv/bin/activate` with `.venv\Scripts\Activate.ps1` (PowerShell) or `.venv\Scripts\activate.bat` (CMD), and use `python` instead of `python3`.
+
 The [`demo`](https://github.com/ElaineYilinW/maternal-electome-EF/actions/workflows/demo-smoke.yml)
 CI matrix re-runs the four commands above on every commit across the OS
 and Python combinations above; a green badge means a fresh clone
