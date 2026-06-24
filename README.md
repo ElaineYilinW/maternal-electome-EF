@@ -15,9 +15,9 @@ each in both a 3-band and a 1-Hz-frequency-step variant.
 ```
 .
 ├── README.md
+├── LICENSE                              MIT
 ├── pyproject.toml                       Package metadata + dependency list (PEP 621)
 ├── setup.py                             Shim so older pip can still `pip install -e .`
-├── requirements.txt                     Plain-text mirror of pyproject deps for `pip install -r`
 ├── CLEANUP_LOG.md                       Decision log for the paper-prep refactor
 ├── .gitignore
 │
