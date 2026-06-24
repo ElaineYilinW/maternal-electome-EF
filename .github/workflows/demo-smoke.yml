@@ -53,9 +53,47 @@ jobs:
                 print(f"{name}: dim_in={m.dim_in}, h={m.h}")
 
       - name: Execute examples/demo.ipynb
+        shell: bash
         run: |
+          # Capture nbconvert exit code WITHOUT failing the step yet, so the
+          # post-mortem below has a chance to extract any cell traceback.
+          set +e
           jupyter nbconvert --to notebook --execute examples/demo.ipynb --output demo.ipynb
-          python -c "import json; nb=json.load(open('examples/demo.ipynb')); n_err=sum(1 for c in nb['cells'] if c['cell_type']=='code' for o in c.get('outputs',[]) if o.get('output_type')=='error'); n_png=sum(1 for c in nb['cells'] if c['cell_type']=='code' for o in c.get('outputs',[]) if 'image/png' in o.get('data',{})); print(f'errors: {n_err} figures: {n_png}'); assert n_err==0 and n_png==6"
+          NBCONVERT_RC=$?
+          set -e
+
+          python <<'PY'
+          import json, os, re, sys
+          ansi = re.compile(r'\x1b\[[0-9;]*m')
+          try:
+              nb = json.load(open('examples/demo.ipynb'))
+          except Exception as e:
+              # If nbconvert never wrote a notebook (early failure), emit a
+              # generic annotation so the API surfaces *something* readable.
+              msg = f"failed to read demo.ipynb after nbconvert: {e}"
+              msg = msg.replace('%', '%25').replace('\n', '%0A')
+              print(f"::error title=nbconvert produced no output::{msg}")
+              sys.exit(1)
+
+          n_err = 0
+          n_png = 0
+          for ci, c in enumerate(nb['cells']):
+              if c.get('cell_type') != 'code':
+                  continue
+              for o in c.get('outputs', []):
+                  if o.get('output_type') == 'error':
+                      n_err += 1
+                      tb = '\n'.join(ansi.sub('', line) for line in o.get('traceback', []))
+                      head = f"{o.get('ename','?')}: {o.get('evalue','?')}"
+                      body = (head + "\n\n" + tb)[-3000:]
+                      body = body.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
+                      print(f"::error file=examples/demo.ipynb,title=cell {ci} {o.get('ename','error')}::{body}")
+                  if 'image/png' in o.get('data', {}):
+                      n_png += 1
+          print(f"errors: {n_err}  figures: {n_png}  nbconvert_rc: {os.environ.get('NBCONVERT_RC','?')}")
+          if n_err != 0 or n_png != 6:
+              sys.exit(1)
+          PY
 
       - name: Upload the failing notebook for inspection
         if: failure()
