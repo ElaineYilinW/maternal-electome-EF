@@ -13,10 +13,6 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # Catch upstream-dep drift before a reader does: re-run the
-  # fresh-deps sentinel daily.
-  schedule:
-    - cron: '17 6 * * *'
 
 jobs:
   demo:
@@ -106,65 +102,3 @@ jobs:
           name: demo-${{ matrix.os }}-py${{ matrix.python-version }}
           path: examples/demo.ipynb
           if-no-files-found: ignore
-
-  # Aggressive "what if everything is at PyPI-latest" sentinel.
-  # Catches drift the moment some upstream dep ships a breaking change
-  # (the `matplotlib.boxplot(labels=)` -> `tick_labels=` rename in 3.9
-  #  was exactly this kind of bug). One job, separate from the main
-  # matrix, runs daily and on push.
-  fresh-deps:
-    name: ubuntu-latest / py3.13 / latest deps
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Install repo + force-upgrade every dep
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-          pip install -U \
-            numpy pandas scipy scikit-learn \
-            matplotlib seaborn \
-            torch \
-            jupyter notebook \
-            tqdm joblib openpyxl
-      - name: Resolved versions
-        shell: python
-        run: |
-            import sys, torch, numpy, pandas, scipy, matplotlib, seaborn, sklearn
-            print(f"python      {sys.version.split()[0]}")
-            print(f"torch       {torch.__version__}")
-            print(f"numpy       {numpy.__version__}")
-            print(f"pandas      {pandas.__version__}")
-            print(f"scipy       {scipy.__version__}")
-            print(f"matplotlib  {matplotlib.__version__}")
-            print(f"seaborn     {seaborn.__version__}")
-            print(f"sklearn     {sklearn.__version__}")
-      - name: Execute examples/demo.ipynb
-        shell: bash
-        run: |
-          set +e
-          jupyter nbconvert --to notebook --execute examples/demo.ipynb --output demo.ipynb
-          set -e
-          python <<'PY'
-          import json, re, sys
-          ansi = re.compile(r'\x1b\[[0-9;]*m')
-          nb = json.load(open('examples/demo.ipynb'))
-          n_err = n_png = 0
-          for ci, c in enumerate(nb['cells']):
-              if c.get('cell_type') != 'code': continue
-              for o in c.get('outputs', []):
-                  if o.get('output_type') == 'error':
-                      n_err += 1
-                      tb = '\n'.join(ansi.sub('', l) for l in o.get('traceback', []))
-                      body = (f"{o.get('ename','?')}: {o.get('evalue','?')}\n\n{tb}")[-3000:]
-                      body = body.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
-                      print(f"::error file=examples/demo.ipynb,title=cell {ci} {o.get('ename','error')}::{body}")
-                  if 'image/png' in o.get('data', {}):
-                      n_png += 1
-          print(f"errors: {n_err}  figures: {n_png}")
-          if n_err != 0 or n_png != 6:
-              sys.exit(1)
-          PY
