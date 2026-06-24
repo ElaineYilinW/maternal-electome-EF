@@ -1682,8 +1682,13 @@ def plot_per_stage_boxplot(scores, period, stages_order=None, ax=None):
     else:
         fig = ax.figure
 
-    bp = ax.boxplot(data, labels=stages_order, patch_artist=True,
-                    showfliers=False)
+    # matplotlib 3.9 renamed boxplot's `labels` kwarg to `tick_labels` and
+    # removed `labels` in 3.11. Pick the right one based on installed version.
+    import matplotlib as _mpl
+    _label_kw = ('tick_labels' if tuple(int(x) for x in _mpl.__version__.split('.')[:2]) >= (3, 9)
+                 else 'labels')
+    bp = ax.boxplot(data, patch_artist=True, showfliers=False,
+                    **{_label_kw: stages_order})
     cmap = plt.get_cmap('tab10')
     for i, patch in enumerate(bp['boxes']):
         patch.set_facecolor(cmap(i % 10))
