@@ -36,6 +36,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
+      - name: Resolved versions
+        shell: python
+        run: |
+            import sys, torch, numpy
+            print(f"python = {sys.version.split()[0]}")
+            print(f"torch  = {torch.__version__}")
+            print(f"numpy  = {numpy.__version__}")
+
       - name: Smoke-test loader from a directory outside the repo
         shell: python
         run: |
@@ -48,3 +56,11 @@ jobs:
         run: |
           jupyter nbconvert --to notebook --execute examples/demo.ipynb --output demo.ipynb
           python -c "import json; nb=json.load(open('examples/demo.ipynb')); n_err=sum(1 for c in nb['cells'] if c['cell_type']=='code' for o in c.get('outputs',[]) if o.get('output_type')=='error'); n_png=sum(1 for c in nb['cells'] if c['cell_type']=='code' for o in c.get('outputs',[]) if 'image/png' in o.get('data',{})); print(f'errors: {n_err} figures: {n_png}'); assert n_err==0 and n_png==6"
+
+      - name: Upload the failing notebook for inspection
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: examples/demo.ipynb
+          if-no-files-found: ignore
