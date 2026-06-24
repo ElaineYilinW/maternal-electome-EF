@@ -36,6 +36,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
+      - name: Register the venv as the "electome" Jupyter kernel
+        # The demo notebook pins kernel name to "electome" so it auto-selects
+        # the right Python instead of any pre-existing system kernel. CI
+        # mirrors the README's user steps.
+        run: python -m ipykernel install --user --name electome --display-name "Python (electome)"
+
       - name: Resolved versions
         shell: python
         run: |

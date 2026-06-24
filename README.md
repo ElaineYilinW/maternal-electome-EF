@@ -147,6 +147,14 @@ source .venv/bin/activate
 # anywhere) plus all dependencies.
 pip install -e .
 
+# Register THIS venv as a Jupyter kernel called "electome". The demo
+# notebook is pinned to this kernel name, so opening it in Jupyter
+# picks the right Python automatically (instead of whatever default
+# Python a pre-existing system Jupyter would otherwise hand you --
+# this matters on HPCs, shared workstations, and any machine with a
+# global Anaconda install).
+python -m ipykernel install --user --name electome --display-name "Python (electome)"
+
 jupyter notebook examples/demo.ipynb
 ```
 
