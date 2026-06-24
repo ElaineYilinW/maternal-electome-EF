@@ -124,14 +124,8 @@ scree plot, dual-filter heatmap). No RDSS access required.
 | Network | Required for `pip install` (no offline tarball shipped) |
 
 `pip` will reject Python versions outside this range automatically via
-the `requires-python` field in `pyproject.toml`.
-
-> **Intel Mac caveat**: torch dropped x86_64 macOS wheels at version 2.4,
-> and this repo requires `torch>=2.3`. Intel Mac users are therefore
-> limited to Python 3.9 / 3.10 / 3.11 (the Python versions for which a
-> torch 2.3 x86_64 macOS wheel exists). Apple Silicon Macs are unaffected.
-> If you hit `Could not find a version that satisfies the requirement
-> torch>=2.3`, this is why — downgrade to Python 3.11.
+the `requires-python` field in `pyproject.toml`. Intel-Mac users: see
+[Troubleshooting](#troubleshooting) — `pip install` will not succeed.
 
 ### One-time setup
 
@@ -161,9 +155,12 @@ On Windows, replace `source .venv/bin/activate` with
 > `ModuleNotFoundError`. Registering the venv as a named kernel makes
 > Jupyter pick our Python automatically.
 
-### Run the demo — pick one of two paths
+### Run the demo — pick one of two ways
 
-**Path A: laptop / desktop with a browser** (macOS, Linux desktop, Windows)
+Both ways produce the same six figures and per-mouse AUC table. The
+difference is just how you'd like to interact with the notebook.
+
+**A. Open in Jupyter** — interactive, runs cell-by-cell in a browser:
 
 ```bash
 jupyter notebook examples/demo.ipynb
@@ -171,31 +168,34 @@ jupyter notebook examples/demo.ipynb
 
 The notebook opens in your browser. Click `Run` → `Run All Cells`. The
 `Python (electome)` kernel is auto-selected from the notebook's metadata;
-if not (some Jupyter versions ignore the pin on first open), use
-`Kernel` → `Change kernel` → `Python (electome)` and re-run.
+if not, use `Kernel` → `Change kernel` → `Python (electome)`, then
+`Run All` again.
 
-You should see a per-mouse AUC printout and six rendered figures.
+Use this when you want to see results inline as each cell runs, or to
+edit cells (e.g. swap to a different EF model).
 
-**Path B: HPC / remote server over SSH** (no browser)
+**B. Run from the terminal** — one command, no browser:
 
 ```bash
 jupyter nbconvert --to notebook --execute examples/demo.ipynb \
     --output demo_run.ipynb
 ```
 
-This runs every cell headless and writes a new `demo_run.ipynb` with all
-outputs baked in. Pull it to a local machine to view:
+This runs every cell to completion and writes `demo_run.ipynb` with all
+outputs (text + figures) baked in. Open `demo_run.ipynb` afterwards in
+any Jupyter / VS Code to inspect.
+
+Use this when you want a quick one-shot run, are working over SSH
+without a browser, or are scripting the demo in CI / automation. If
+you're on a remote machine, pull the result back to view it locally:
 
 ```bash
-# On your laptop, NOT the HPC:
-scp <user>@<hpc>:~/maternal-electome-EF/examples/demo_run.ipynb ~/Desktop/
+# On your local machine:
+scp <user>@<host>:~/maternal-electome-EF/examples/demo_run.ipynb ~/Desktop/
 ```
 
-Open `~/Desktop/demo_run.ipynb` in any Jupyter / VS Code on your laptop to
-see the six figures inline.
-
 The [`demo`](https://github.com/ElaineYilinW/maternal-electome-EF/actions/workflows/demo-smoke.yml)
-CI matrix runs the one-time setup + Path B on every commit across 15
+CI matrix runs the one-time setup + way **B** on every commit across 15
 OS × Python combinations; a green badge means a fresh clone actually
 produces six figures end-to-end.
 
@@ -206,6 +206,31 @@ the raw LFP feature pickles. Mount `/Volumes/rdss_rhultman/` first, then:
 ```bash
 jupyter notebook notebooks/00_data_preprocessing.ipynb
 ```
+
+---
+
+## Troubleshooting
+
+**`ERROR: Could not find a version that satisfies the requirement torch>=2.3`**
+during `pip install -e .`:
+You are on an Intel (x86_64) Mac. PyTorch dropped Intel-macOS wheels
+starting at version 2.3, but this repo requires `torch>=2.3`, so there
+is no satisfying wheel. The only fixes are to use Linux, Windows, or an
+Apple-Silicon (M-series) Mac.
+
+**`ModuleNotFoundError: No module named 'tqdm'`** (or `torchbd`,
+`electome`, …) when you run a cell:
+Jupyter ran the cell with a different Python than the one where you did
+`pip install -e .`. The notebook expects the `Python (electome)` kernel
+(the venv you set up), but Jupyter fell back to a system Python. Two
+fixes: (1) make sure you ran the `python -m ipykernel install` line in
+the [one-time setup](#one-time-setup); (2) in the notebook, switch to
+`Kernel` → `Change kernel` → `Python (electome)` and re-run.
+
+**`NoSuchKernel: electome`** when you run `jupyter nbconvert`:
+Same root cause as above — the `electome` kernel isn't registered on
+this machine yet. Run the `python -m ipykernel install …` line from
+the [one-time setup](#one-time-setup) once and re-try.
 
 ---
 
