@@ -9,9 +9,11 @@ scipy>=1.7
 scikit-learn>=1.0
 
 # Deep learning. The shipped .pt files are stored as portable
-# {state_dict, config} dicts, so any torch >= 1.10 on any supported
-# Python (3.8 - 3.13) can load them bit-exactly.
-torch>=1.10
+# {state_dict, config} dicts, so any torch >= 1.10 can load them
+# bit-exactly. We float the lower bound to torch 2.3 because earlier
+# 2.x releases crash on numpy 2 ("RuntimeError: Numpy is not
+# available") and a fresh install will resolve to numpy 2 by default.
+torch>=2.3
 
 # Provides `torchbd` (BetaDivLoss for the NMF reconstruction loss)
 # Author: Billy Carson, Duke BME (BSD-3-Clause)

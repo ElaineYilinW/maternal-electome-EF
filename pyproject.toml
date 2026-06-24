@@ -29,7 +29,13 @@ dependencies = [
     "pandas>=1.4",
     "scipy>=1.7",
     "scikit-learn>=1.0",
-    "torch>=1.10",
+    # torch 2.3 added native numpy 2.x support. Earlier 2.x releases
+    # crash at the first array<->tensor conversion with
+    # "RuntimeError: Numpy is not available" when paired with numpy 2.
+    # The state-dict-based loader works on any torch >= 1.10, but
+    # users on a fresh install will pull a numpy 2.x by default, so
+    # we float the floor up to a torch that handles that cleanly.
+    "torch>=2.3",
     # Provides torchbd.loss.BetaDivLoss for the NMF reconstruction loss
     "beta-divergence-metrics",
     # Plotting
