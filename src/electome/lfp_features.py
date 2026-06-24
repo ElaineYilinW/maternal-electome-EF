@@ -40,7 +40,12 @@ import itertools
 import numpy as np
 import scipy.io
 import scipy.signal as signal
-from scipy.integrate import simps, trapz
+# scipy 1.14 removed the legacy spellings `simps` and `trapz`; the new
+# names `simpson` and `trapezoid` have been available since scipy 1.6.
+try:
+    from scipy.integrate import simpson as simps, trapezoid as trapz
+except ImportError:
+    from scipy.integrate import simps, trapz  # scipy < 1.6 fallback
 
 
 # ============================================================
