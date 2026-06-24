@@ -114,6 +114,27 @@ six paper-active EFs, applies it to a tiny shipped simulated dataset, and
 draws every plot used in the paper (per-mouse loading-score time series,
 scree plot, dual-filter heatmap). No RDSS access required.
 
+### Requirements
+
+| | Tested |
+|---|---|
+| Python | 3.9, 3.10, 3.11, 3.12, 3.13 |
+| OS | Ubuntu 24.04, macOS (Apple Silicon), Windows Server 2022 |
+| Disk | ~2 GB free for the install (torch wheels are large) |
+| Network | Required for `pip install` (no offline tarball shipped) |
+
+`pip` will reject Python versions outside this range automatically via
+the `requires-python` field in `pyproject.toml`.
+
+> **Intel Mac caveat**: torch dropped x86_64 macOS wheels at version 2.4,
+> and this repo requires `torch>=2.3`. Intel Mac users are therefore
+> limited to Python 3.9 / 3.10 / 3.11 (the Python versions for which a
+> torch 2.3 x86_64 macOS wheel exists). Apple Silicon Macs are unaffected.
+> If you hit `Could not find a version that satisfies the requirement
+> torch>=2.3`, this is why — downgrade to Python 3.11.
+
+### Install + run
+
 ```bash
 git clone https://github.com/ElaineYilinW/maternal-electome-EF.git
 cd maternal-electome-EF
@@ -128,6 +149,11 @@ pip install -e .
 
 jupyter notebook examples/demo.ipynb
 ```
+
+The [`demo`](https://github.com/ElaineYilinW/maternal-electome-EF/actions/workflows/demo-smoke.yml)
+CI matrix re-runs the four commands above on every commit across the OS
+and Python combinations above; a green badge means a fresh clone
+actually produces the six paper figures end-to-end.
 
 To train new models from scratch on the lab data, follow the six task
 notebooks under `notebooks/` instead — those do require RDSS access for
