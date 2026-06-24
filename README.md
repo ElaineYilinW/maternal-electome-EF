@@ -133,7 +133,12 @@ the `requires-python` field in `pyproject.toml`.
 > If you hit `Could not find a version that satisfies the requirement
 > torch>=2.3`, this is why — downgrade to Python 3.11.
 
-### Install + run
+### One-time setup
+
+These six lines are the same regardless of how you actually run the demo
+afterwards. They make a clean Python virtual environment, install the
+package, and register the venv as a named Jupyter kernel so the demo
+notebook can find it.
 
 ```bash
 git clone https://github.com/ElaineYilinW/maternal-electome-EF.git
@@ -141,29 +146,58 @@ cd maternal-electome-EF
 
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Installs the `electome` package in editable mode (so
-# `from electome.models_registry import load_ef_model` works from
-# anywhere) plus all dependencies.
 pip install -e .
-
-# Register THIS venv as a Jupyter kernel called "electome". The demo
-# notebook is pinned to this kernel name, so opening it in Jupyter
-# picks the right Python automatically (instead of whatever default
-# Python a pre-existing system Jupyter would otherwise hand you --
-# this matters on HPCs, shared workstations, and any machine with a
-# global Anaconda install).
 python -m ipykernel install --user --name electome --display-name "Python (electome)"
+```
 
+On Windows, replace `source .venv/bin/activate` with
+`.venv\Scripts\Activate.ps1` (PowerShell) or `.venv\Scripts\activate.bat`
+(CMD), and use `python` instead of `python3`.
+
+> **Why the last line?** `demo.ipynb` metadata pins the kernel name to
+> `electome`. Without that `ipykernel install` step, Jupyter would fall
+> back to whatever `python3` kernel it finds first — usually a system
+> Python without our deps (`tqdm`, `torchbd`, …), which then fails with
+> `ModuleNotFoundError`. Registering the venv as a named kernel makes
+> Jupyter pick our Python automatically.
+
+### Run the demo — pick one of two paths
+
+**Path A: laptop / desktop with a browser** (macOS, Linux desktop, Windows)
+
+```bash
 jupyter notebook examples/demo.ipynb
 ```
 
-On Windows, replace `source .venv/bin/activate` with `.venv\Scripts\Activate.ps1` (PowerShell) or `.venv\Scripts\activate.bat` (CMD), and use `python` instead of `python3`.
+The notebook opens in your browser. Click `Run` → `Run All Cells`. The
+`Python (electome)` kernel is auto-selected from the notebook's metadata;
+if not (some Jupyter versions ignore the pin on first open), use
+`Kernel` → `Change kernel` → `Python (electome)` and re-run.
+
+You should see a per-mouse AUC printout and six rendered figures.
+
+**Path B: HPC / remote server over SSH** (no browser)
+
+```bash
+jupyter nbconvert --to notebook --execute examples/demo.ipynb \
+    --output demo_run.ipynb
+```
+
+This runs every cell headless and writes a new `demo_run.ipynb` with all
+outputs baked in. Pull it to a local machine to view:
+
+```bash
+# On your laptop, NOT the HPC:
+scp <user>@<hpc>:~/maternal-electome-EF/examples/demo_run.ipynb ~/Desktop/
+```
+
+Open `~/Desktop/demo_run.ipynb` in any Jupyter / VS Code on your laptop to
+see the six figures inline.
 
 The [`demo`](https://github.com/ElaineYilinW/maternal-electome-EF/actions/workflows/demo-smoke.yml)
-CI matrix re-runs the four commands above on every commit across the OS
-and Python combinations above; a green badge means a fresh clone
-actually produces the six paper figures end-to-end.
+CI matrix runs the one-time setup + Path B on every commit across 15
+OS × Python combinations; a green badge means a fresh clone actually
+produces six figures end-to-end.
 
 To train new models from scratch on the lab data, follow the six task
 notebooks under `notebooks/` instead — those do require RDSS access for
