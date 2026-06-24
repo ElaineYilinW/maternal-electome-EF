@@ -148,13 +148,6 @@ On Windows, replace `source .venv/bin/activate` with
 `.venv\Scripts\Activate.ps1` (PowerShell) or `.venv\Scripts\activate.bat`
 (CMD), and use `python` instead of `python3`.
 
-> **Why the last line?** `demo.ipynb` metadata pins the kernel name to
-> `electome`. Without that `ipykernel install` step, Jupyter would fall
-> back to whatever `python3` kernel it finds first — usually a system
-> Python without our deps (`tqdm`, `torchbd`, …), which then fails with
-> `ModuleNotFoundError`. Registering the venv as a named kernel makes
-> Jupyter pick our Python automatically.
-
 ### Run the demo — pick one of two ways
 
 Both ways produce the same six figures and per-mouse AUC table. The
@@ -169,7 +162,7 @@ jupyter notebook examples/demo.ipynb
 The notebook opens in your browser. Click `Run` → `Run All Cells`. The
 `Python (electome)` kernel is auto-selected from the notebook's metadata;
 if not, use `Kernel` → `Change kernel` → `Python (electome)`, then
-`Run All` again.
+restart the kernel and `Run All` again.
 
 Use this when you want to see results inline as each cell runs, or to
 edit cells (e.g. swap to a different EF model).
@@ -194,43 +187,15 @@ you're on a remote machine, pull the result back to view it locally:
 scp <user>@<host>:~/maternal-electome-EF/examples/demo_run.ipynb ~/Desktop/
 ```
 
-The [`demo`](https://github.com/ElaineYilinW/maternal-electome-EF/actions/workflows/demo-smoke.yml)
-CI matrix runs the one-time setup + way **B** on every commit across 15
-OS × Python combinations; a green badge means a fresh clone actually
-produces six figures end-to-end.
-
-To train new models from scratch on the lab data, follow the six task
-notebooks under `notebooks/` instead — those do require RDSS access for
-the raw LFP feature pickles. Mount `/Volumes/rdss_rhultman/` first, then:
-
-```bash
-jupyter notebook notebooks/00_data_preprocessing.ipynb
-```
-
 ---
 
 ## Troubleshooting
 
-**`ERROR: Could not find a version that satisfies the requirement torch>=2.3`**
-during `pip install -e .`:
-You are on an Intel (x86_64) Mac. PyTorch dropped Intel-macOS wheels
-starting at version 2.3, but this repo requires `torch>=2.3`, so there
-is no satisfying wheel. The only fixes are to use Linux, Windows, or an
-Apple-Silicon (M-series) Mac.
+**`Could not find a version that satisfies the requirement torch>=2.3`** — Intel (x86_64) Mac. PyTorch dropped Intel-macOS wheels at 2.3. Use Linux, Windows, or an Apple-Silicon Mac.
 
-**`ModuleNotFoundError: No module named 'tqdm'`** (or `torchbd`,
-`electome`, …) when you run a cell:
-Jupyter ran the cell with a different Python than the one where you did
-`pip install -e .`. The notebook expects the `Python (electome)` kernel
-(the venv you set up), but Jupyter fell back to a system Python. Two
-fixes: (1) make sure you ran the `python -m ipykernel install` line in
-the [one-time setup](#one-time-setup); (2) in the notebook, switch to
-`Kernel` → `Change kernel` → `Python (electome)` and re-run.
+**`ModuleNotFoundError: tqdm / torchbd / electome`** — Jupyter is using a Python that doesn't have the package. Re-run the `ipykernel install` line from [setup](#one-time-setup), then `Kernel` → `Change kernel` → `Python (electome)` → restart + Run All.
 
-**`NoSuchKernel: electome`** when you run `jupyter nbconvert`:
-Same root cause as above — the `electome` kernel isn't registered on
-this machine yet. Run the `python -m ipykernel install …` line from
-the [one-time setup](#one-time-setup) once and re-try.
+**`NoSuchKernel: electome`** (during `nbconvert`) — Same root cause; the `electome` kernel isn't registered yet. Run the `ipykernel install` line from [setup](#one-time-setup) once.
 
 ---
 
