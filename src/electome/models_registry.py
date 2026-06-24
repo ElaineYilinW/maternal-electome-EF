@@ -217,12 +217,29 @@ def load_ef_model(name, models_dir=None, map_location="cpu"):
 
     # Importing the package registers ``dCSFA_NMF_Ver3`` and ``_Ver1`` under
     # their original top-level names in ``sys.modules`` (see electome.__init__),
-    # which is what the pickled ``.pt`` files reference. So torch.load resolves
-    # the class regardless of which path the user actually imports from.
+    # which is what the *legacy* pickled .pt files reference. New-format files
+    # do not need the shim (they store only tensors + a config dict), but the
+    # import is harmless and keeps the legacy fallback below working.
     import electome  # noqa: F401
 
-    model = torch.load(path, map_location=map_location)
-    return model
+    payload = torch.load(path, map_location=map_location)
+
+    # New portable format: dict with state_dict + config. Reconstruct the
+    # dCSFA_NMF instance from the config and load the weights. Works
+    # across torch 1.10 ↔ 2.x because the file contains only tensors
+    # and plain Python primitives -- no class pickles.
+    if isinstance(payload, dict) and payload.get("_format") == "electome.v2":
+        from importlib import import_module
+        cls_mod = import_module(f"electome.{payload['class_module']}")
+        cls = getattr(cls_mod, payload["class_name"])
+        model = cls(**payload["config"])
+        model.load_state_dict(payload["state_dict"])
+        model.eval()
+        return model
+
+    # Legacy format: torch.save(model, path) pickled the whole instance.
+    # The sys.modules shim above lets torch.load resolve the class.
+    return payload
 
 
 # Self-test

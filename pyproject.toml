@@ -7,7 +7,7 @@ name = "electome"
 version = "0.1.0"
 description = "Maternal Electome Factors — dCSFA-NMF code & paper-active models"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.14"
 authors = [
     { name = "Elaine Yilin Wang" },
 ]
@@ -18,27 +18,27 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    # Core scientific stack -- versions match those the paper models were
-    # trained with. torch in particular: the pickled .pt files in models/
-    # were saved by torch 1.10 and the ParameterList layout changed in
-    # torch 2.x, so an upper bound is required for the demo to unpickle.
-    # 1.20.1 was the original lab pin; bumping to 1.21.6 because newer
-    # Pillow (a matplotlib transitive dep) imports numpy.typing.NDArray,
-    # added in numpy 1.21. 1.20→1.21 ABI is compatible so no model risk.
-    "numpy==1.21.6",
-    "pandas==1.4.1",
-    "scipy==1.7.3",
-    "scikit-learn==1.0.2",
-    "torch==1.10.0",
+    # Core scientific stack. The shipped .pt files store
+    # ``{state_dict, config}`` dicts (see
+    # ``scripts/convert_models_to_portable.py``) so the loader is
+    # decoupled from torch's pickle internals — any torch ≥ 1.10 on any
+    # Python in ``requires-python`` can reconstruct the model
+    # bit-exactly. Lower bounds chosen to match the actual API surface
+    # this codebase uses; no upper bounds.
+    "numpy>=1.21",
+    "pandas>=1.4",
+    "scipy>=1.7",
+    "scikit-learn>=1.0",
+    "torch>=1.10",
     # Provides torchbd.loss.BetaDivLoss for the NMF reconstruction loss
     "beta-divergence-metrics",
     # Plotting
-    "matplotlib==3.5.1",
-    "seaborn==0.11.2",
+    "matplotlib>=3.5",
+    "seaborn>=0.11",
     # Utilities
-    "tqdm==4.62.3",
-    "joblib==1.1.0",
-    "openpyxl==3.0.9",
+    "tqdm>=4.62",
+    "joblib>=1.1",
+    "openpyxl>=3.0",
     # Jupyter for the examples/demo.ipynb walkthrough
     "jupyter",
     "notebook",
