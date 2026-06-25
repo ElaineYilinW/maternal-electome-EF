@@ -114,19 +114,6 @@ six paper-active EFs, applies it to a tiny shipped simulated dataset, and
 draws every plot used in the paper (per-mouse loading-score time series,
 scree plot, dual-filter heatmap). No RDSS access required.
 
-### Requirements
-
-| | Tested |
-|---|---|
-| Python | 3.9, 3.10, 3.11, 3.12, 3.13 |
-| OS | Ubuntu 24.04, macOS (Apple Silicon), Windows Server 2022 |
-| Disk | ~2 GB free for the install (torch wheels are large) |
-| Network | Required for `pip install` (no offline tarball shipped) |
-
-`pip` will reject Python versions outside this range automatically via
-the `requires-python` field in `pyproject.toml`. Intel-Mac users: see
-[Troubleshooting](#troubleshooting) — `pip install` will not succeed.
-
 ### One-time setup
 
 These six lines are the same regardless of how you actually run the demo
@@ -189,9 +176,22 @@ scp <user>@<host>:~/maternal-electome-EF/examples/demo_run.ipynb ~/Desktop/
 
 ---
 
+## Reproducible Docker image — in progress
+
+A Docker image (`ghcr.io/elaineyilinw/electome`) is being prepared so the
+demo can be reproduced with a single `docker run`, with no Python setup,
+venv, or kernel registration required. This is the right path for
+absolute reproducibility or when `pip install` is awkward on your
+machine (e.g. Intel Macs, locked-down enterprise environments).
+
+For now, use the `pip install` Quick start above. The Docker image will
+be linked here once published.
+
+---
+
 ## Troubleshooting
 
-**`Could not find a version that satisfies the requirement torch>=2.3`** — Intel (x86_64) Mac. PyTorch dropped Intel-macOS wheels at 2.3. Use Linux, Windows, or an Apple-Silicon Mac.
+**`Could not find a version that satisfies the requirement torch>=2.3`** — Intel Mac. PyPI dropped Intel-macOS torch wheels at 2.3, but conda-forge still ships them. Either install torch from conda first (`conda install -c conda-forge "pytorch>=2.3"` then `pip install -e . --no-deps`), or use Linux / Windows / Apple-Silicon Mac.
 
 **`ModuleNotFoundError: tqdm / torchbd / electome`** — Jupyter is using a Python that doesn't have the package. Re-run the `ipykernel install` line from [setup](#one-time-setup), then `Kernel` → `Change kernel` → `Python (electome)` → restart + Run All.
 
