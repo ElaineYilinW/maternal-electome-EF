@@ -165,14 +165,8 @@ This runs every cell to completion and writes `demo_run.ipynb` with all
 outputs (text + figures) baked in. Open `demo_run.ipynb` afterwards in
 any Jupyter / VS Code to inspect.
 
-Use this when you want a quick one-shot run, are working over SSH
-without a browser, or are scripting the demo in CI / automation. If
-you're on a remote machine, pull the result back to view it locally:
-
-```bash
-# On your local machine:
-scp <user>@<host>:~/maternal-electome-EF/examples/demo_run.ipynb ~/Desktop/
-```
+Use this when you want a quick one-shot run or are scripting the demo
+in CI / automation.
 
 ---
 
