@@ -208,7 +208,7 @@ def run_circos_prep(model, train_dict, *, output_csv,
     """
     # Local import to avoid pulling all of analysis into the workflow module
     # at import time
-    from analysis import process_W_nmf_k
+    from .analysis import process_W_nmf_k
 
     W_nmf = model.get_W_nmf()
     df, df_selected, info = process_W_nmf_k(

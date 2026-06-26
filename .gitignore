@@ -61,3 +61,11 @@ Thumbs.db
 .vscode/
 *.swp
 DEV_LOG.md
+
+# Paper-era reference numbers extracted from BACKUP notebook outputs
+# (local-only working scratch for Plan A bit-exact reproduce comparison)
+PAPER_NUMBERS.md
+REFERENCE_NUMBERS.md
+
+# nbconvert stdout/stderr logs (local-only)
+run_logs/
