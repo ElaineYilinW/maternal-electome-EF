@@ -1,21 +1,21 @@
 """
-Off-paper data exports for Sara's one-off analysis requests.
+Off-paper additional analysis exports.
 
 Each function corresponds to one xlsx artifact the OnnestVsOffnest task
-notebook used to produce inline (in a single very long cell). The Sara
+notebook used to produce inline (in a single very long cell). The additional-analysis
 section of the notebook collapses to one call per function:
 
-    sara_pup_retrieval(model, ...,         output_xlsx="Onnest_pups.xlsx")
-    sara_onnest_loading_inspect(model, ..., output_xlsx="OnNestEF_OnOff.xlsx")
-    sara_p3_behavior(model, ...,           output_xlsx="OnNestEF_Behavior_P3.xlsx")
+    pup_retrieval_export(model, ...,         output_xlsx="Onnest_pups.xlsx")
+    onnest_loading_export(model, ..., output_xlsx="OnNestEF_OnOff.xlsx")
+    p3_behavior_export(model, ...,           output_xlsx="OnNestEF_Behavior_P3.xlsx")
 
-These are not paper figures -- they are convenience dumps Sara requested.
+These are not paper figures -- they are convenience dumps additional analysised.
 Each writes a multi-sheet workbook and prints a single line on success.
 
 Function provenance (from the OnnestVsOffnest_3band notebook):
-    sara_pup_retrieval         <- c53 (~200 lines inline)
-    sara_onnest_loading_inspect <- c58 (~150 lines inline)
-    sara_p3_behavior           <- c60 (~185 lines inline)
+    pup_retrieval_export         <- c53 (~200 lines inline)
+    onnest_loading_export <- c58 (~150 lines inline)
+    p3_behavior_export           <- c60 (~185 lines inline)
 
 The two pure-exploration cells (c55 "Jan5 score request data prep" and c56
 "Jan21 score request apply model") are intentionally NOT ported: they
@@ -63,7 +63,7 @@ def _load_and_score(model, data_file, x_feature_list=None, x_feature_weights=Non
 
 
 def _summary_stats(values):
-    """Return per-vector summary stats used by the Sara xlsx tables."""
+    """Return per-vector summary stats used by the additional-analysis xlsx tables."""
     n = len(values)
     if n == 0:
         return {'Sample_Count': 0, 'Mean': np.nan, 'Std': np.nan,
@@ -82,16 +82,16 @@ def _summary_stats(values):
 
 
 # =============================================================================
-# Sara request 1: pup-retrieval per-mouse loading-score detail
+# additional analysis 1: pup-retrieval per-mouse loading-score detail
 # =============================================================================
 
-def sara_pup_retrieval(model, *,
+def pup_retrieval_export(model, *,
                        pup_retrieval_data_file,
                        c_mouse_ids, e_mouse_ids,
                        output_xlsx,
                        baseline_n_samples=400,
                        target_period='P4 home'):
-    """Per-mouse loading-score time-series at P4 home, split by Sara's
+    """Per-mouse loading-score time-series at P4 home, split by the additional-analysis
     4-label scheme:
 
         0 = baseline (first ``baseline_n_samples`` samples per mouse)
@@ -210,15 +210,15 @@ def sara_pup_retrieval(model, *,
         ws_sum.column_dimensions[get_column_letter(i)].width = w
 
     wb.save(output_xlsx)
-    print(f"  Sara pup retrieval written: {output_xlsx}  "
+    print(f"  Pup retrieval written: {output_xlsx}  "
           f"({len(mouse_order)} mice, Individual + Summary sheets)")
 
 
 # =============================================================================
-# Sara request 2: onnest loading inspect (per-period per-mouse per-onnest)
+# additional analysis 2: onnest loading inspect (per-period per-mouse per-onnest)
 # =============================================================================
 
-def sara_onnest_loading_inspect(model, *, training_data_file, output_xlsx):
+def onnest_loading_export(model, *, training_data_file, output_xlsx):
     """Apply model to every (period, mouse, onnest_label) cell of the
     8-region pkl and write the 4-sheet xlsx (Full_Statistics, Mean, Median,
     Raw_Scores).
@@ -268,15 +268,15 @@ def sara_onnest_loading_inspect(model, *, training_data_file, output_xlsx):
         df_median_pivot.to_excel(writer, sheet_name='Median', index=False)
         df_raw_pivot.to_excel(writer, sheet_name='Raw_Scores', index=False)
 
-    print(f"  Sara onnest loading inspect written: {output_xlsx}  "
+    print(f"  Onnest loading export written: {output_xlsx}  "
           f"({len(df)} (period, mouse, onnest) cells, {len(df_raw)} raw samples)")
 
 
 # =============================================================================
-# Sara request 3: P3 behavior summary (licking / nursing)
+# additional analysis 3: P3 behavior summary (licking / nursing)
 # =============================================================================
 
-def sara_p3_behavior(model, *, training_data_file, output_xlsx):
+def p3_behavior_export(model, *, training_data_file, output_xlsx):
     """Apply model to the P3 lick/selfgroom/nurse pkl and summarize per-mouse
     score statistics restricted to ``licking == 1`` and ``nursing == 1``.
 
@@ -317,5 +317,5 @@ def sara_p3_behavior(model, *, training_data_file, output_xlsx):
 
     n_lick = (df_raw['Licking'] == 1).sum()
     n_nurse = (df_raw['Nursing'] == 1).sum()
-    print(f"  Sara P3 behavior written: {output_xlsx}  "
+    print(f"  P3 behavior export written: {output_xlsx}  "
           f"(licking=1: {n_lick}, nursing=1: {n_nurse} samples)")

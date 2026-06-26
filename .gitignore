@@ -69,3 +69,8 @@ REFERENCE_NUMBERS.md
 
 # nbconvert stdout/stderr logs (local-only)
 run_logs/
+
+# Local-only files (visible on dev machine, not on GitHub)
+notebooks/00_data_preprocessing.ipynb
+CLEANUP_LOG.md
+README.local.md
