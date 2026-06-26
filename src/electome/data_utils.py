@@ -330,7 +330,9 @@ def create_period_dataset(data, y, mouse_ids, periods, dataset_name,
     if X_feature_weights is None:
         X_feature_weights = DEFAULT_X_FEATURE_WEIGHTS
 
-    mouse_mask = np.isin(data['mouse_id'], mouse_ids)
+    canonical_data_ids = np.array([clean_mouse_id(mid) for mid in data['mouse_id']])
+    canonical_target = [clean_mouse_id(mid) for mid in mouse_ids]
+    mouse_mask = np.isin(canonical_data_ids, canonical_target)
     period_mask = np.isin(data['period'], periods)
     combined_mask = mouse_mask & period_mask
 
@@ -343,7 +345,7 @@ def create_period_dataset(data, y, mouse_ids, periods, dataset_name,
             filtered_data[key] = data[key][combined_mask]
 
     filtered_y = y[combined_mask]
-    filtered_mouse_ids = filtered_data['mouse_id']
+    filtered_mouse_ids = canonical_data_ids[combined_mask]
 
     if verbose:
         print(f"{dataset_name} Per-mouse sample counts:")
