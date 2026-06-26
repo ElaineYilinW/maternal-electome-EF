@@ -255,7 +255,8 @@ def create_split_dataset(full_dict, condition, target_mouse_ids, y_arg,
     mouse_condition = np.isin(cleaned_mouse_ids, target_mouse_ids)
     mouse_indices = np.where(mouse_condition)[0]
 
-    final_dict = _filter_dict_by_indices(filtered_dict, mouse_indices, base_len)
+    final_dict = _filter_dict_by_indices(
+        filtered_dict, mouse_indices, len(filtered_dict[base_size_key]))
     if isinstance(y_arg, str):
         y_final = final_dict[y_arg].reshape(-1, 1)
     else:
