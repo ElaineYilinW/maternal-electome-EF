@@ -27,7 +27,7 @@ DEFAULT_REGION_PAIRS = [
 ]
 assert len(DEFAULT_REGION_PAIRS) == 28
 
-DEFAULT_FREQ_BAND_3BAND = [(2, 7), (7, 15), (15, 30)]
+DEFAULT_FREQ_BAND_3BAND = [(2, 7), (8, 12), (14, 23)]
 DEFAULT_FREQ_BAND_1HZ = list(range(2, 56))  # 54 bins
 
 DEFAULT_STAGES = ['Pre', 'P1', 'P3', 'P8', 'P14']
