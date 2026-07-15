@@ -74,3 +74,4 @@ run_logs/
 notebooks/00_data_preprocessing.ipynb
 CLEANUP_LOG.md
 README.local.md
+models/README.local.md

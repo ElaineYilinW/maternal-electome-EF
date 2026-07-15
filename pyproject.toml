@@ -50,17 +50,6 @@ dependencies = [
     "notebook",
 ]
 
-[project.optional-dependencies]
-# Carlson Lab LFP utilities, only needed by
-# notebooks/00_data_preprocessing.ipynb (the raw .mat -> .pkl feature
-# extraction step). The lpne setup.py imports numpy at build time, so
-# it cannot live in the core `dependencies` list -- pip would try to
-# build lpne before installing numpy and fail. Install with::
-#
-#     pip install -e ".[preprocessing]"
-preprocessing = [
-    "lpne @ git+https://github.com/carlson-lab/lpne.git",
-]
 
 [project.urls]
 Homepage = "https://github.com/ElaineYilinW/maternal-electome-EF"

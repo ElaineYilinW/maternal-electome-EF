@@ -4,9 +4,11 @@ PyTorch / Jupyter code accompanying our work on **Electome Factors (EFs) of
 maternal behavior**, identified from multi-region homecage LFP recordings in
 mice using a supervised autoencoder with an NMF decoder (dCSFA-NMF).
 
-The pipeline trains four task-specific EF models (maternal stage, maternal
-engagement on/off-nest, licking vs non-licking, licking vs grooming),
-each in both a 3-band and a 1-Hz-frequency-step variant.
+The pipeline trains four task-specific EFs (maternal stage, maternal
+engagement on/off-nest, licking vs non-licking, licking vs grooming) —
+**six models** in total: the maternal-stage and maternal-engagement EFs each
+come in a 3-band and a 1-Hz-frequency-step variant, while the two licking EFs
+are 3-band only.
 
 ---
 
@@ -33,9 +35,9 @@ After training, each task notebook also **projects the frozen model to
 unseen data**: external ELS animals, withheld maternal timepoints, and
 related behavior contrasts (cross-task backproject).
 
-Every task notebook follows the same 8-section structure (~150 lines of
-code total). Every section is one or two function calls against
-`src/electome/` followed by a one-line summary print:
+Every task notebook follows the same core structure (~150 lines of code
+total). Every section is one or two function calls against `src/electome/`
+followed by a one-line summary print:
 
 | Section | What it does |
 |---|---|
@@ -43,10 +45,13 @@ code total). Every section is one or two function calls against
 | 2. LOO training | Parallel leave-one-mouse-out CV + Wilcoxon vs chance |
 | 3. Full training (paper model) | Train final model on all training mice, save to disk |
 | 4. Circos plot | Write top-feature CSV for the external circos plotter |
-| 5. Elements selection | Dual-filter (absolute strength + relative uniqueness), bar-heatmap figure |
+| 5. Elements selection | Dual-filter (absolute strength + relative uniqueness), heatmap figure (bar for 3-band, dot for 1-Hz) |
 | 6. Validation on ELS group | Per-dataset AUC mean ± SEM + Wilcoxon |
-| 7. Stage backprojection | Project to every stage, median + IQR figure + 10-sheet xlsx + 5 CSVs |
-| 8. Additional backprojection analyses | One-off xlsx exports (pup retrieval, on-nest loading, P3 behavior) |
+| Additional backprojection analyses | Trailing section in every notebook — xlsx exports (pup retrieval, on-nest loading, P3 behavior) |
+
+`OnnestVsOffnest_3band.ipynb` additionally carries a **Stage backprojection**
+section (project to every stage → median + IQR figure + 10-sheet xlsx + CSVs)
+between sections 6 and the trailing exports; the other notebooks omit it.
 
 ---
 
