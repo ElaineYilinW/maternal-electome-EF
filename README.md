@@ -47,7 +47,7 @@ followed by a one-line summary print:
 | 4. Circos plot | Write top-feature CSV for the external circos plotter |
 | 5. Elements selection | Dual-filter (absolute strength + relative uniqueness), heatmap figure (bar for 3-band, dot for 1-Hz) |
 | 6. Validation on ELS group | Per-dataset AUC mean ± SEM + Wilcoxon |
-| Additional backprojection analyses | Trailing section in every notebook — xlsx exports (pup retrieval, on-nest loading, P3 behavior) |
+| Additional backprojection analyses | Trailing section in the four **3-band** notebooks — xlsx exports (e.g. pup retrieval, on-nest loading, P3 behavior). The two **1-Hz** notebooks omit it. |
 
 `OnnestVsOffnest_3band.ipynb` additionally carries a **Stage backprojection**
 section (project to every stage → median + IQR figure + 10-sheet xlsx + CSVs)
