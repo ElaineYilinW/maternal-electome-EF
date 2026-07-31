@@ -49,6 +49,172 @@ except ImportError:
 
 
 # ============================================================
+# Region naming
+# ============================================================
+
+#: Brain regions the released models were trained on, in the order their
+#: feature columns appear. ``make_features`` orders regions with ``sorted``,
+#: and these eight names sort into exactly this order -- which is why a
+#: recording that spells a region differently (``Nac``, ``vHipp``) would
+#: silently produce columns in a different order. ``lfp_to_features``
+#: therefore canonicalises the names and then checks the set against this
+#: tuple rather than trusting the sort.
+MODEL_REGIONS = ('BLA', 'CeA', 'IL', 'MeA', 'NAc', 'PrL', 'VHipp', 'VTA')
+
+#: Region spellings that map onto :data:`MODEL_REGIONS`. Lookup is
+#: case-insensitive and ignores ``_``/``-``/spaces, so pure case or
+#: punctuation differences (``nac``, ``v_hipp``) need no entry here; only
+#: genuinely different names do.
+REGION_ALIASES = {
+    'BLS': 'BLA',            # typo present in some of the lab's CHANS files
+    'NACC': 'NAc',
+    'ACB': 'NAc',
+    'VHIP': 'VHipp',
+    'VHPC': 'VHipp',
+    'VHC': 'VHipp',
+    'PL': 'PrL',
+}
+
+#: Keys scipy adds to every loaded ``.mat`` that are not channels.
+MATLAB_IGNORED_KEYS = ('__header__', '__version__', '__globals__')
+
+
+def _region_key(name):
+    """Normalising key for region lookup: case, ``_``, ``-`` and spaces folded."""
+    return re.sub(r'[\s_\-]+', '', str(name)).upper()
+
+
+_CANONICAL_BY_KEY = {_region_key(r): r for r in MODEL_REGIONS}
+_CANONICAL_BY_KEY.update({_region_key(k): v for k, v in REGION_ALIASES.items()})
+
+
+def canonical_region(name):
+    """Map a region label onto the model's spelling.
+
+    Returns the name unchanged when it is not recognised, so callers can
+    report the unknown label rather than having it silently rewritten.
+
+    Examples::
+
+        canonical_region('Nac')   -> 'NAc'
+        canonical_region('vHipp') -> 'VHipp'
+        canonical_region('BLS')   -> 'BLA'
+        canonical_region('S1')    -> 'S1'
+    """
+    return _CANONICAL_BY_KEY.get(_region_key(name), name)
+
+
+def load_lfp_mat(fn):
+    """Load one ``_LFP.mat`` as ``{channel_name: 1D float32 array}``.
+
+    Equivalent to ``lpne.load_lfps`` (Carlson Lab), reimplemented here so the
+    demo and the batch entry points below have no GitHub-only dependency.
+    Handles both classic ``.mat`` files and the HDF5-based v7.3 format, and
+    drops any channel that is not a readable numeric array.
+
+    Parameters
+    ----------
+    fn : str
+        Path to the ``.mat`` file.
+
+    Returns
+    -------
+    dict
+        Channel name -> 1D ``float32`` array.
+    """
+    import warnings
+
+    if not str(fn).endswith('.mat'):
+        raise ValueError(f"expected a .mat file, got {fn!r}")
+    try:
+        lfps = scipy.io.loadmat(fn)
+    except NotImplementedError:                     # v7.3 == HDF5
+        try:
+            import h5py
+        except ImportError:
+            raise ImportError(
+                f"{fn} is a MATLAB v7.3 (HDF5) file; reading it needs h5py "
+                "(`pip install h5py`), or re-save it from MATLAB with "
+                "`save(..., '-v7')`."
+            )
+        lfps = dict(h5py.File(fn, 'r'))
+
+    out = {}
+    for channel, value in lfps.items():
+        if channel in MATLAB_IGNORED_KEYS:
+            continue
+        try:
+            out[channel] = np.array(value).astype(np.float32).flatten()
+        except (ValueError, TypeError):
+            warnings.warn(f"Unable to read channel: {channel}")
+    return out
+
+
+def canonicalize_regions(ave_lfps, expected_regions=MODEL_REGIONS):
+    """Rename averaged-LFP regions to the model's spelling and check the set.
+
+    Applied by :func:`lfp_to_features` between averaging and feature
+    computation. The paper's own recordings already use the canonical names,
+    so this is a no-op for them; it exists so that a collaborator's file
+    naming its regions ``Nac``/``vHipp`` lines up with the trained models
+    instead of producing correctly-shaped but wrongly-ordered columns.
+
+    Parameters
+    ----------
+    ave_lfps : dict
+        Region -> averaged signal, from :func:`average_lfps_by_key`.
+    expected_regions : sequence of str or None
+        Region set the result must contain. ``None`` skips the check, which
+        is what you want when computing features for their own sake rather
+        than for projection through a released model.
+
+    Returns
+    -------
+    dict
+        The same signals under canonical region names.
+
+    Raises
+    ------
+    ValueError
+        If, after canonicalisation, the regions do not match
+        ``expected_regions`` exactly.
+    """
+    renamed, sources = {}, {}
+    for name, sig in ave_lfps.items():
+        canon = canonical_region(name)
+        if canon in renamed:
+            raise ValueError(
+                f"regions {sources[canon]!r} and {name!r} both canonicalise to "
+                f"{canon!r}; fix the channel names in the CHANS file"
+            )
+        renamed[canon] = sig
+        sources[canon] = name
+
+    if expected_regions is None:
+        return renamed
+
+    expected = list(expected_regions)
+    missing = [r for r in expected if r not in renamed]
+    extra = sorted(r for r in renamed if r not in expected)
+    if missing or extra:
+        lines = [
+            "recording regions do not match the model's.",
+            f"  expected ({len(expected)}): {', '.join(expected)}",
+            f"  found    ({len(renamed)}): {', '.join(sorted(renamed))}",
+        ]
+        if missing:
+            lines.append(f"  missing: {', '.join(missing)}")
+        if extra:
+            lines.append(
+                f"  unrecognised: {', '.join(extra)}  "
+                "(add the spelling to electome.lfp_features.REGION_ALIASES, "
+                "or pass expected_regions=None to skip this check)"
+            )
+        raise ValueError("\n".join(lines))
+    return renamed
+
+
+# ============================================================
 # Utilities
 # ============================================================
 
@@ -364,6 +530,435 @@ def extract_features_for_stage(lfp_files, chans_files, stage_name, output_dir,
 
     print(f"\n{stage_name}: saved {n_saved} pkls, skipped {len(skipped)}")
     return n_saved, skipped
+
+
+# ============================================================
+# One-call entry point: raw recording -> model-ready features
+# ============================================================
+
+#: The two feature parameterisations used in the paper. ``lfp_to_features``
+#: looks the Welch settings up here so a caller only has to name the band.
+FEATURE_PRESETS = {
+    "3band": dict(
+        min_freq=1, max_freq=70,
+        freq_bands=[(2, 7), (8, 12), (14, 23)],
+        new_fs=100, nperseg=200,
+        band_upper_inclusive=True, clip_for_safety=False,
+    ),
+    "1Hz": dict(
+        min_freq=2, max_freq=57,
+        freq_bands=[(i, i + 1) for i in range(2, 56)],
+        new_fs=200, nperseg=400,
+        band_upper_inclusive=False, clip_for_safety=True,
+    ),
+}
+
+
+def _read_scoring(path):
+    """Read a behaviour-scoring table (``.xlsx``/``.xls``/``.csv``)."""
+    import pandas as pd
+    return (pd.read_csv(path) if str(path).lower().endswith('.csv')
+            else pd.read_excel(path))
+
+
+def lfp_to_features(lfp_file, chans_file, *, band="3band",
+                    fs=1000, window_duration=3.0,
+                    mouse_id=None, period=None,
+                    onnest_xlsx=None, output_pkl=None,
+                    expected_regions=MODEL_REGIONS,
+                    lpne_loader=None, **overrides):
+    """Turn one raw recording into the feature dict the EF models consume.
+
+    This is :func:`extract_features_for_stage` for a single recording, returning
+    the result instead of writing per-mouse pkls, and with the Welch settings
+    selected by name. It performs the same steps in the same order: load LFPs,
+    average channels per region, Welch power + squared coherence, reshape,
+    log10 power, per-file min-max normalisation.
+
+    Parameters
+    ----------
+    lfp_file, chans_file : str
+        Paths to the recording's ``_LFP.mat`` and ``_CHANS.mat``.
+    band : {'3band', '1Hz'}
+        Which published parameterisation to use (see :data:`FEATURE_PRESETS`).
+        Individual settings can still be overridden via ``**overrides``.
+    fs : int
+        Sampling rate of the raw LFPs in Hz.
+    window_duration : float
+        Seconds per analysis window.
+    mouse_id, period : str, optional
+        Written into the returned dict as per-window arrays. ``mouse_id``
+        defaults to the ``Mouse...`` token in the LFP filename.
+    onnest_xlsx : str, optional
+        On-nest scoring file (``.xlsx``/``.xls``/``.csv``, columns START/STOP
+        in seconds relative to the start of this recording). If given,
+        ``onnest_label`` is added.
+    output_pkl : str, optional
+        If given, the returned dict is also pickled here.
+    expected_regions : sequence of str or None
+        Region set the recording must provide, checked after the names are
+        canonicalised (see :func:`canonicalize_regions`). Defaults to
+        :data:`MODEL_REGIONS`, so a recording that cannot be projected
+        through the released models fails here with a readable message
+        instead of producing mis-ordered columns. ``None`` skips the check.
+    lpne_loader : callable, optional
+        LFP reader, defaulting to :func:`load_lfp_mat`. Pass ``lpne.load_lfps``
+        to use the Carlson Lab reader instead, or a stub in tests.
+    **overrides
+        Any key of the chosen preset, e.g. ``nperseg=512``.
+
+    Returns
+    -------
+    dict
+        ``power``, ``coh_sq_coherence`` (both ``(n_window, n_feature)``),
+        ``X`` (their horizontal concatenation -- the model input),
+        ``freq_band``, ``region``, ``region_pair``, ``mouse_id``, ``period``,
+        and ``onnest_label`` when ``onnest_xlsx`` was given.
+
+    Examples
+    --------
+    >>> feats = lfp_to_features("Mouse_LFP.mat", "Mouse_CHANS.mat", band="3band")
+    >>> feats["X"].shape[1]
+    108
+    """
+    if band not in FEATURE_PRESETS:
+        raise ValueError(f"band must be one of {sorted(FEATURE_PRESETS)}, got {band!r}")
+    settings = dict(FEATURE_PRESETS[band])
+    unknown = set(overrides) - set(settings)
+    if unknown:
+        raise TypeError(f"unknown setting(s) for band={band!r}: {sorted(unknown)}")
+    settings.update(overrides)
+
+    if lpne_loader is None:
+        lpne_loader = load_lfp_mat
+
+    if mouse_id is None:
+        m = re.search(r'(Mouse[A-Za-z0-9]+)', os.path.basename(lfp_file))
+        mouse_id = m.group(1) if m else _stem(lfp_file, '_LFP.mat')
+
+    lfps = lpne_loader(lfp_file)
+    mat_data = scipy.io.loadmat(chans_file)
+    for required in ('CHANACTIVE', 'CHANNAMES'):
+        if required not in mat_data:
+            raise ValueError(
+                f"{chans_file}: no {required!r} variable "
+                f"(found: {', '.join(k for k in mat_data if not k.startswith('__'))})"
+            )
+    ave_lfps = average_lfps_by_key(lfps, mat_data)
+    ave_lfps = canonicalize_regions(ave_lfps, expected_regions)
+
+    features = make_features(
+        ave_lfps, fs=fs, window_duration=window_duration, **settings
+    )
+
+    n_window = features['power'].shape[0]
+    features['mouse_id'] = np.repeat(mouse_id, n_window)
+    features['period'] = np.repeat(period if period is not None else '', n_window)
+
+    features, ok = normalize_features_per_file(features)
+    if not ok:
+        raise ValueError(
+            f"{lfp_file}: negative power after log10 -- recording rejected by "
+            "normalize_features_per_file"
+        )
+
+    features['X'] = np.hstack([features['power'], features['coh_sq_coherence']])
+
+    if onnest_xlsx is not None:
+        from .dataset_assembly import generate_onnest_labels_binary
+        onnest = _read_scoring(onnest_xlsx)
+        features.update(
+            generate_onnest_labels_binary(n_window, window_duration, onnest)
+        )
+
+    if output_pkl is not None:
+        os.makedirs(os.path.dirname(os.path.abspath(output_pkl)), exist_ok=True)
+        with open(output_pkl, 'wb') as f:
+            pickle.dump(features, f)
+
+    return features
+
+
+# ============================================================
+# Batch entry point: many recordings at once
+# ============================================================
+
+def _suffixes(suffix):
+    """Normalise a suffix argument to a lower-case tuple."""
+    if isinstance(suffix, str):
+        suffix = (suffix,)
+    return tuple(s.lower() for s in suffix)
+
+
+def _listing(files_or_dir, suffix):
+    """Accept a directory or an explicit list; return sorted matching paths.
+
+    Suffix matching is case-insensitive (``_LFP.mat``, ``_lfp.mat`` and
+    ``_LFP.MAT`` all count), and ``suffix`` may be a tuple of alternatives.
+    Excel lock files (``~$...``) are ignored.
+    """
+    sufs = _suffixes(suffix)
+    if isinstance(files_or_dir, str):
+        if not os.path.isdir(files_or_dir):
+            raise NotADirectoryError(f"{files_or_dir} is not a directory")
+        return sorted(
+            os.path.join(files_or_dir, fn)
+            for fn in os.listdir(files_or_dir)
+            if fn.lower().endswith(sufs) and not fn.startswith('~$')
+        )
+    return sorted(files_or_dir)
+
+
+def _stem(path, suffix):
+    """Filename with ``suffix`` removed, e.g. ``Mouse..._001_LFP.mat`` -> ``Mouse..._001``.
+
+    Case-insensitive, and ``suffix`` may be a tuple of alternatives.
+    """
+    base = os.path.basename(path)
+    for s in _suffixes(suffix):
+        if base.lower().endswith(s):
+            return base[:-len(s)]
+    return os.path.splitext(base)[0]
+
+
+def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
+                         lfp_suffix="_LFP.mat", chans_suffix="_CHANS.mat",
+                         onnest_suffix=(".xlsx", ".xls", ".csv")):
+    """Match each LFP file to its CHANS file, and optionally its scoring file.
+
+    Pairing is by filename, in four passes, so that recordings whose three
+    files do not share one naming convention still line up:
+
+    1. exact stem (``X_LFP.mat`` <-> ``X_CHANS.mat``);
+    2. normalised stem -- case, ``_``, ``-`` and spaces folded, so
+       ``M1_day3_LFP.mat`` matches ``m1-day3_CHANS.mat``;
+    3. canonical mouse id, for this lab's convention
+       (``MouseC1F3ELS32_241005_001`` and ``C1_ELS32`` both reduce to
+       ``C1_ELS32`` -- see :func:`~electome.dataset_assembly.canonical_id`);
+    4. one stem being a prefix of the other.
+
+    Suffix matching itself is case-insensitive, and each suffix may be a
+    tuple of alternatives -- scoring files default to accepting ``.xlsx``,
+    ``.xls`` and ``.csv``. If your files use different markers entirely,
+    pass e.g. ``lfp_suffix="_lfp_data.mat"``.
+
+    Nothing is computed here; use it to inspect the matching before running
+    :func:`batch_lfp_to_features`.
+
+    Parameters
+    ----------
+    lfp_files, chans_files : list[str] or str
+        Explicit file lists, or a directory to scan for the suffix.
+    onnest_files : list[str] or str, optional
+        Behaviour-scoring files. Omit if you only need scores, not labels.
+    lfp_suffix, chans_suffix, onnest_suffix : str or tuple of str
+        Filename endings that identify each file type.
+
+    Returns
+    -------
+    pairs : list[dict]
+        One entry per LFP file with keys ``key``, ``lfp``, ``chans``,
+        ``onnest`` (``None`` when unmatched).
+    problems : list[str]
+        Human-readable description of every LFP without a CHANS file, every
+        CHANS/scoring file that matched nothing, and every ambiguous match.
+        A non-empty list means the inputs need attention.
+
+    Examples
+    --------
+    >>> pairs, problems = pair_recording_files('raw/', 'raw/', 'raw/')
+    >>> for p in problems:
+    ...     print(p)
+    """
+    from .dataset_assembly import canonical_id
+
+    lfp_files = _listing(lfp_files, lfp_suffix)
+    chans_files = _listing(chans_files, chans_suffix)
+    onnest_files = [] if onnest_files is None else _listing(onnest_files, onnest_suffix)
+
+    def _fmt(suffix):
+        return ' / '.join(repr(s) for s in _suffixes(suffix))
+
+    problems = []
+    if not lfp_files:
+        problems.append(f"no files ending in {_fmt(lfp_suffix)}")
+    if not chans_files:
+        problems.append(f"no files ending in {_fmt(chans_suffix)}")
+
+    def norm(stem):
+        return re.sub(r'[\s_\-]+', '', stem).lower()
+
+    def index(paths, suffix):
+        by_stem, by_norm, by_canon = {}, {}, {}
+        for p in paths:
+            s = _stem(p, suffix)
+            if s in by_stem:
+                problems.append(f"duplicate stem {s!r}: {by_stem[s]} and {p}")
+            by_stem[s] = p
+            by_norm.setdefault(norm(s), []).append(p)
+            by_canon.setdefault(canonical_id(s), []).append(p)
+        return by_stem, by_norm, by_canon
+
+    chans_idx = index(chans_files, chans_suffix)
+    onnest_idx = index(onnest_files, onnest_suffix)
+
+    def match(stem, idx, kind):
+        by_stem, by_norm, by_canon = idx
+        if stem in by_stem:                              # 1. exact stem
+            return by_stem[stem]
+        for pass_name, hits in (                         # 2. normalised, 3. mouse id
+            ("normalised name", by_norm.get(norm(stem), [])),
+            ("mouse id", by_canon.get(canonical_id(stem), [])),
+        ):
+            if len(hits) == 1:
+                return hits[0]
+            if len(hits) > 1:
+                problems.append(
+                    f"{stem}: {len(hits)} {kind} files share the same {pass_name} "
+                    f"({', '.join(os.path.basename(h) for h in hits)})"
+                )
+                return None
+        prefix = [p for s, p in by_stem.items()          # 4. prefix
+                  if norm(s).startswith(norm(stem)) or norm(stem).startswith(norm(s))]
+        if len(prefix) == 1:
+            return prefix[0]
+        if len(prefix) > 1:
+            problems.append(f"{stem}: ambiguous {kind} match ({len(prefix)} candidates)")
+        return None
+
+    used_chans, used_onnest, pairs = set(), set(), []
+    for lfp in lfp_files:
+        stem = _stem(lfp, lfp_suffix)
+        chans = match(stem, chans_idx, "CHANS")
+        onnest = match(stem, onnest_idx, "scoring") if onnest_files else None
+        if chans is None:
+            problems.append(
+                f"{os.path.basename(lfp)}: no matching {_fmt(chans_suffix)} file"
+            )
+            continue
+        used_chans.add(chans)
+        if onnest is not None:
+            used_onnest.add(onnest)
+        elif onnest_files:
+            problems.append(f"{os.path.basename(lfp)}: no matching scoring file")
+        pairs.append({"key": stem, "lfp": lfp, "chans": chans, "onnest": onnest})
+
+    for p in chans_files:
+        if p not in used_chans:
+            problems.append(f"{os.path.basename(p)}: CHANS file matched no LFP file")
+    for p in onnest_files:
+        if p not in used_onnest:
+            problems.append(f"{os.path.basename(p)}: scoring file matched no LFP file")
+
+    return pairs, problems
+
+
+def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
+                          band="3band", period=None,
+                          fs=1000, window_duration=3.0,
+                          output_dir=None, strict=False, verbose=True,
+                          expected_regions=MODEL_REGIONS,
+                          lfp_suffix="_LFP.mat", chans_suffix="_CHANS.mat",
+                          onnest_suffix=(".xlsx", ".xls", ".csv"),
+                          lpne_loader=None, **overrides):
+    """Run :func:`lfp_to_features` over several recordings.
+
+    Files are matched with :func:`pair_recording_files`. Each recording is
+    processed independently: one bad recording is reported and skipped rather
+    than aborting the batch (set ``strict=True`` to raise instead).
+
+    Parameters
+    ----------
+    lfp_files, chans_files, onnest_files
+        Lists of paths, or directories to scan. ``onnest_files`` may be omitted
+        when labels are not needed -- the returned dicts then carry no
+        ``onnest_label`` and only window scores can be computed.
+    band : {'3band', '1Hz'}
+        Which published parameterisation to use.
+    period : str or dict, optional
+        Recording stage written into each result. Pass a single string to use
+        it for every recording, or ``{key: stage}`` to set it per recording
+        (``key`` is the LFP filename stem). Any label is accepted; it is
+        metadata only and need not be one of the stages used in the paper.
+    output_dir : str, optional
+        If given, each result is pickled to ``<output_dir>/<key>.pkl``.
+    strict : bool
+        Raise on the first failure instead of skipping it.
+    verbose : bool
+        Print one line per recording plus a closing summary.
+    expected_regions : sequence of str or None
+        Passed to :func:`lfp_to_features`; defaults to :data:`MODEL_REGIONS`.
+    lfp_suffix, chans_suffix, onnest_suffix : str or tuple of str
+        Filename endings identifying each file type, passed to
+        :func:`pair_recording_files`.
+
+    Returns
+    -------
+    results : dict[str, dict]
+        Feature dict per recording, keyed by LFP filename stem.
+    skipped : list[tuple[str, str]]
+        ``(key, reason)`` for every recording that did not complete.
+    """
+    pairs, problems = pair_recording_files(
+        lfp_files, chans_files, onnest_files,
+        lfp_suffix=lfp_suffix, chans_suffix=chans_suffix,
+        onnest_suffix=onnest_suffix,
+    )
+
+    if problems:
+        header = f"{len(problems)} problem(s) with the input files:"
+        detail = "\n".join(f"  - {p}" for p in problems)
+        if strict:
+            raise ValueError(f"{header}\n{detail}")
+        if verbose:
+            print(header)
+            print(detail)
+
+    if isinstance(period, dict):
+        missing = [p["key"] for p in pairs if p["key"] not in period]
+        if missing:
+            msg = f"period dict has no entry for: {', '.join(missing)}"
+            if strict:
+                raise KeyError(msg)
+            if verbose:
+                print(f"  - {msg} (those recordings get an empty period)")
+
+    results, skipped = {}, []
+    for p in pairs:
+        key = p["key"]
+        stage = period.get(key, "") if isinstance(period, dict) else period
+        try:
+            feats = lfp_to_features(
+                p["lfp"], p["chans"], band=band, fs=fs,
+                window_duration=window_duration, period=stage,
+                onnest_xlsx=p["onnest"],
+                output_pkl=(os.path.join(output_dir, f"{key}.pkl")
+                            if output_dir else None),
+                expected_regions=expected_regions,
+                lpne_loader=lpne_loader, **overrides
+            )
+        except Exception as exc:                       # noqa: BLE001 - reported
+            if strict:
+                raise
+            skipped.append((key, f"{type(exc).__name__}: {exc}"))
+            if verbose:
+                print(f"  SKIP {key}: {type(exc).__name__}: {exc}")
+            continue
+
+        results[key] = feats
+        if verbose:
+            n_win = feats["X"].shape[0]
+            lab = feats.get("onnest_label")
+            extra = ""
+            if lab is not None:
+                extra = f", on-nest {int(lab.sum())}/{n_win}"
+                if lab.sum() in (0, n_win):
+                    extra += "  (single class -- no AUC possible)"
+            print(f"  OK   {key}: X={feats['X'].shape}{extra}")
+
+    if verbose:
+        print(f"{len(results)} recording(s) processed, {len(skipped)} skipped.")
+    return results, skipped
 
 
 # ============================================================

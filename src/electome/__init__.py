@@ -3,10 +3,15 @@
 After ``pip install -e .`` from the repo root, the codebase is importable
 from anywhere on the system as::
 
+    from electome.lfp_features  import batch_lfp_to_features, pair_recording_files
     from electome.models_registry import load_ef_model
     from electome.workflow      import compute_loading_scores, compute_per_mouse_auc
     from electome.viz           import plot_scree_W_nmf, plot_dual_filter
     from electome.training      import run_loo_cv, train_final_model
+
+``lfp_features`` is the entry point for new recordings: it turns raw
+``_LFP.mat`` / ``_CHANS.mat`` (plus an optional behaviour-scoring sheet)
+into the feature matrix the models consume. See ``examples/demo.ipynb``.
 
 The 6 paper-active ``.pt`` files in ``models/`` were saved by torch.save
 when the dCSFA-NMF class lived at the top-level module path

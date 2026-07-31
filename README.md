@@ -58,10 +58,14 @@ between sections 6 and the trailing exports; the other notebooks omit it.
 ## Quick start
 
 The fastest way to see the trained models in action is the runnable demo
-in [`examples/demo.ipynb`](examples/demo.ipynb), which loads one of the
-six paper-active EFs, applies it to a tiny shipped simulated dataset, and
-draws every plot used in the paper (per-mouse loading-score time series,
-scree plot, dual-filter heatmap). No data-share access required.
+in [`examples/demo.ipynb`](examples/demo.ipynb). It goes the whole way from
+raw recording files to EF scores on one real recording shipped with the
+repository (`examples/demo_data/raw_lfp/`, a ~7 min excerpt of a control
+dam at P8): file-pairing checks, Welch power and coherence features,
+projection through a frozen EF, per-mouse AUC against the behaviour
+annotation, and the paper's scree plot and dual-filter heatmaps. Its last
+section is the recipe for running the same pipeline on **your own**
+recordings, in batches. No data-share access required.
 
 ### One-time setup
 
@@ -144,9 +148,10 @@ be linked here once published.
 ## Data access
 
 The task notebooks under `notebooks/` load per-mouse spectral-feature `.pkl`
-files from the lab data share. Data access is restricted to lab members;
-the demo at `examples/demo.ipynb` ships with a small simulated fixture so
-the EF-application pipeline can be exercised end-to-end without any data
+files from the lab data share, and access to those is restricted to lab
+members. Nothing else needs them: `examples/demo.ipynb` ships with one real
+recording excerpt, so the raw-LFP → features → EF-score pipeline can be run
+end-to-end — on the example, or on your own recordings — without any data-share
 access.
 
 ---
