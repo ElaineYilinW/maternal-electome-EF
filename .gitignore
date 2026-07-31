@@ -15,6 +15,12 @@
 *_dirty*.ipynb
 .ipynb_checkpoints/
 
+# Executed copies of the demo: demo_ci.ipynb from the CI smoke test,
+# demo_run.ipynb from the README's option B. The committed demo.ipynb is
+# the real one.
+examples/demo_ci.ipynb
+examples/demo_run.ipynb
+
 # Paper / manuscript drafts kept inside the repo working directory
 # (they live alongside the code for convenience but should not be committed)
 *.docx
