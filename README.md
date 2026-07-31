@@ -122,6 +122,52 @@ in CI / automation.
 
 ---
 
+## Using it on your own recordings
+
+Section 9 of [`examples/demo.ipynb`](examples/demo.ipynb) is the full recipe;
+this is the short version.
+
+Put one `_LFP.mat`, one `_CHANS.mat` and (optionally) one behaviour-scoring
+`.xlsx` / `.xls` / `.csv` per recording in a folder, then:
+
+```python
+from electome.lfp_features import pair_recording_files, batch_lfp_to_features
+from electome.models_registry import load_ef_model
+from electome.workflow import compute_loading_scores, compute_per_mouse_auc
+
+pairs, problems = pair_recording_files('my_raw/', 'my_raw/', 'my_raw/')
+print(problems)          # check the matching BEFORE computing anything
+
+feats, skipped = batch_lfp_to_features(
+    'my_raw/', 'my_raw/', 'my_raw/',
+    band='3band',                        # or '1Hz'
+    fs=1000,                             # your sampling rate -- see below
+    period={'recA': 'P1', 'recB': 'P8'}, # free-text stage label, optional
+    output_dir='my_features/',           # optional: one <key>.pkl per recording
+)
+
+model = load_ef_model('OnnestVsOffnest_3band')
+for key, d in feats.items():
+    scores = compute_loading_scores(model, d['X'])
+```
+
+Four things must line up, and each is checked with a readable error rather
+than a quietly wrong answer:
+
+| What | Requirement |
+| --- | --- |
+| Brain regions | `BLA, CeA, IL, MeA, NAc, PrL, VHipp, VTA`. Variants (`Nac`, `NAcc`, `vHipp`, `VHPC`, `ACB`, `PL`) are recognised; anything else is named in the error. |
+| Sampling rate | `fs` defaults to 1000 Hz and no `.mat` file records the true rate — **set it if yours differs**. Must be a whole multiple of 100 Hz (`3band`) or 200 Hz (`1Hz`). |
+| Recording length | At least one 3-second window. |
+| Scoring times | `START` / `STOP` in seconds from the start of that recording. |
+
+File naming is flexible: suffix matching is case-insensitive and the three
+files may differ in case and `_`/`-`/space; pass `lfp_suffix=` / `chans_suffix=`
+for entirely different conventions. MATLAB v6, v7 and v7.3 files are all read,
+and the `lpne` package is not required.
+
+---
+
 ## Reproducible Docker image — in progress
 
 A Docker image (`ghcr.io/elaineyilinw/electome`) is being prepared so the

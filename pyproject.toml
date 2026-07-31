@@ -45,6 +45,11 @@ dependencies = [
     "tqdm>=4.62",
     "joblib>=1.1",
     "openpyxl>=3.0",
+    # Reading behaviour-scoring .xlsx needs openpyxl; reading MATLAB v7.3
+    # (HDF5) recordings needs h5py. scipy.io.loadmat handles v6/v7 itself,
+    # but MATLAB writes v7.3 for anything over 2 GB and some rigs default
+    # to it, so lfp_features.load_lfp_mat falls back to h5py.
+    "h5py>=3.0",
     # Jupyter for the examples/demo.ipynb walkthrough
     "jupyter",
     "notebook",

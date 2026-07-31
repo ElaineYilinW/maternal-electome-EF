@@ -315,6 +315,16 @@ def make_features(lfps, fs, min_freq, max_freq, window_duration, freq_bands,
             ``region``           -- sorted list of region names
             ``region_pair``      -- list of ``"R1-R2"`` strings for the upper-triangle pairs
     """
+    # Decimation is integer-factor, so an fs that is not a whole multiple of
+    # new_fs would silently land at the wrong rate (e.g. fs=1250 -> 1250//100
+    # = 12 -> 104.17 Hz, not 100) and every frequency below would be off.
+    if fs < new_fs or fs % new_fs != 0:
+        raise ValueError(
+            f"fs={fs} Hz cannot be decimated to new_fs={new_fs} Hz by an integer "
+            f"factor. Pass a recording sampled at a whole multiple of {new_fs} Hz, "
+            f"or resample it first. (Common rates that work: "
+            f"{', '.join(str(new_fs * k) for k in (1, 2, 5, 10, 20))} Hz.)"
+        )
     decimation_factor = fs // new_fs
     rois = sorted(lfps.keys())
     window_samp = int(new_fs * window_duration)
@@ -324,8 +334,15 @@ def make_features(lfps, fs, min_freq, max_freq, window_duration, freq_bands,
     X = signal.resample_poly(X, up=1, down=decimation_factor, axis=1)
 
     # Reshape into (n_window, n_region, samples) with no inter-window overlap
-    idx = (X.shape[1] // window_samp) * window_samp
-    X = X[:, :idx]
+    n_window = X.shape[1] // window_samp
+    if n_window == 0:
+        raise ValueError(
+            f"recording is {X.shape[1] / new_fs:.2f} s after decimation, shorter "
+            f"than one {window_duration} s window. Use a longer recording, or a "
+            f"shorter window_duration (note the released models were trained on "
+            f"3 s windows)."
+        )
+    X = X[:, :n_window * window_samp]
     X = X.reshape(X.shape[0], -1, window_samp).transpose(1, 0, 2)
 
     # Cross power spectral density via Welch
@@ -583,9 +600,15 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
         Which published parameterisation to use (see :data:`FEATURE_PRESETS`).
         Individual settings can still be overridden via ``**overrides``.
     fs : int
-        Sampling rate of the raw LFPs in Hz.
+        Sampling rate of the raw LFPs in Hz. **Check this against your own
+        recordings** -- it defaults to the 1000 Hz this lab records at, and
+        nothing in a ``.mat`` file states the true rate, so a mismatch would
+        shift every frequency. It must be a whole multiple of the preset's
+        ``new_fs`` (100 Hz for ``3band``, 200 Hz for ``1Hz``); anything else
+        raises.
     window_duration : float
-        Seconds per analysis window.
+        Seconds per analysis window. Leave at 3.0 to match the released
+        models; changing it changes what one score refers to.
     mouse_id, period : str, optional
         Written into the returned dict as per-window arrays. ``mouse_id``
         defaults to the ``Mouse...`` token in the LFP filename.
