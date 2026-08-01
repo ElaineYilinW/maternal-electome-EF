@@ -71,7 +71,7 @@ disk rather than only displayed:
 | Path | Contents |
 | --- | --- |
 | `examples/results/features/<recording>_<band>.pkl` | the feature dict per recording, ready to reload |
-| `examples/results/scores.xlsx` | sheet `per_window` (one row per 3 s window) and sheet `per_recording` (one row per recording, with the AUC) |
+| `examples/results/scores.xlsx`, `scores_1Hz.xlsx` | sheets `per_window` (one row per 3 s window), `per_recording`, and `per_animal` (sessions pooled, the level the paper reports) |
 | `examples/results/figures/*.png` | loading-score time series, AUC bars, scree plot, dual-filter heatmaps |
 
 ### One-time setup
@@ -141,7 +141,7 @@ behaviour-scoring `.xlsx` / `.xls` / `.csv` in each — then:
 ```python
 from electome.lfp_features import pair_recording_files, batch_lfp_to_features
 from electome.models_registry import load_ef_model
-from electome.workflow import compute_loading_scores, compute_per_mouse_auc
+from electome.workflow import score_recordings
 
 pairs, problems = pair_recording_files(
     'my_recordings/', 'my_recordings/', 'my_recordings/', recursive=True)
@@ -158,9 +158,19 @@ feats, skipped = batch_lfp_to_features(
 )
 
 model = load_ef_model('OnnestVsOffnest_3band')
-for key, d in feats.items():
-    scores = compute_loading_scores(model, d['X'])
+per_window, per_recording, per_animal = score_recordings(
+    model, feats,
+    label_name='onnest_label',
+    model_name='OnnestVsOffnest_3band', band='3band',
+    output_xlsx='scores.xlsx',        # sheets: per_window, per_recording, per_animal
+)
 ```
+
+`score_recordings` is the back-projection step: it scores every window of every
+recording and returns three tables — per window, per recording, and per animal
+(pooling an animal's sessions, the level the paper reports). An AUC needs both
+classes present and is `NaN` otherwise; recordings with no scoring file still
+get their scores.
 
 Four things must line up, and each is checked with a readable error rather
 than a quietly wrong answer:

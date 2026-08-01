@@ -424,3 +424,139 @@ def compute_per_mouse_auc(scores, y_true, mouse_ids):
             continue  # single-class mouse -- AUC is undefined
         out[str(mid)] = float(roc_auc_score(y_m, s_m))
     return out
+
+
+def score_recordings(model, features, *, label_name="onnest_label",
+                     window_duration=3.0, model_name=None, band=None,
+                     output_xlsx=None):
+    """Project a batch of recordings through an EF model and tabulate the result.
+
+    This is the step after :func:`~electome.lfp_features.batch_lfp_to_features`:
+    it back-projects every recording, and returns the scores as tables rather
+    than as loose arrays, so they can be written out and read by someone who
+    does not use Python.
+
+    Three levels are produced, because they answer different questions and are
+    easy to confuse:
+
+    * **per window** -- the raw output, one row per analysis window. Use it to
+      plot a time course or to align scores with anything else you scored.
+    * **per recording** -- one row per file, with its window counts, class
+      balance and AUC. Use it to see whether a session worked.
+    * **per animal** -- one row per ``mouse_id``, pooling that animal's
+      recordings before computing the AUC. This is the level the paper reports,
+      and it differs from *per recording* whenever an animal contributed more
+      than one session (see ``mouse_id`` in
+      :func:`~electome.lfp_features.batch_lfp_to_features`).
+
+    An AUC is only defined where both classes are present, and is ``NaN``
+    otherwise -- a recording scored entirely on-nest, or one with no scoring
+    file at all, still gets its scores.
+
+    Parameters
+    ----------
+    model : dCSFA_NMF
+        A loaded EF model, e.g. from
+        :func:`~electome.models_registry.load_ef_model`. Its ``dim_in`` must
+        match the feature matrices (108 for ``'3band'``, 1944 for ``'1Hz'``).
+    features : dict[str, dict]
+        The ``results`` mapping from
+        :func:`~electome.lfp_features.batch_lfp_to_features`. A single feature
+        dict is also accepted and treated as a one-recording batch.
+    label_name : str
+        Key holding the behaviour label. Missing key means "no labels": scores
+        are still produced, the AUC columns are ``NaN``.
+    window_duration : float
+        Seconds per window, used to turn window indices into times. Must match
+        what the features were computed with.
+    model_name, band : str, optional
+        Recorded verbatim in the tables so a saved file says what produced it.
+    output_xlsx : str, optional
+        If given, the three tables are written there as sheets ``per_window``,
+        ``per_recording`` and ``per_animal``.
+
+    Returns
+    -------
+    per_window, per_recording, per_animal : pandas.DataFrame
+
+    Examples
+    --------
+    >>> feats, skipped = batch_lfp_to_features('raw/', 'raw/', 'raw/')
+    >>> model = load_ef_model('OnnestVsOffnest_3band')
+    >>> win, rec, animal = score_recordings(model, feats,
+    ...                                     output_xlsx='scores.xlsx')
+    """
+    import pandas as pd
+
+    if "X" in features:                       # a single feature dict
+        features = {str(np.asarray(features.get("mouse_id", ["recording"]))[0]):
+                    features}
+
+    def _auc(scores, labels):
+        if labels is None:
+            return float("nan")
+        y = np.asarray(labels, dtype=float).ravel()
+        keep = ~np.isnan(y)
+        if len(np.unique(y[keep])) < 2:
+            return float("nan")
+        return float(roc_auc_score(y[keep], np.asarray(scores).ravel()[keep]))
+
+    win_frames, rec_rows = [], []
+    for key in sorted(features):
+        d = features[key]
+        scores = compute_loading_scores(model, d["X"])
+        n_win = len(scores)
+        labels = d.get(label_name)
+        animal = np.asarray(d.get("mouse_id", np.repeat(key, n_win)))
+        stage = np.asarray(d.get("period", np.repeat("", n_win)))
+
+        win_frames.append(pd.DataFrame({
+            "recording": key,
+            "mouse_id": animal,
+            "period": stage,
+            "window": np.arange(n_win),
+            "t_start_s": np.arange(n_win) * window_duration,
+            "t_end_s": (np.arange(n_win) + 1) * window_duration,
+            "score": scores,
+            label_name: labels if labels is not None else np.nan,
+        }))
+
+        n_pos = int(np.nansum(labels)) if labels is not None else np.nan
+        rec_rows.append({
+            "recording": key,
+            "mouse_id": str(animal[0]),
+            "period": str(stage[0]),
+            "band": band,
+            "model": model_name,
+            "n_windows": n_win,
+            f"n_{label_name}_1": n_pos,
+            f"n_{label_name}_0": (n_win - n_pos) if labels is not None else np.nan,
+            "mean_score": float(np.mean(scores)),
+            "auc": _auc(scores, labels),
+        })
+
+    per_window = pd.concat(win_frames, ignore_index=True)
+    per_recording = pd.DataFrame(rec_rows)
+
+    animal_rows = []
+    for mid, sub in per_window.groupby("mouse_id", sort=True):
+        animal_rows.append({
+            "mouse_id": mid,
+            "n_recordings": sub["recording"].nunique(),
+            "n_windows": len(sub),
+            "band": band,
+            "model": model_name,
+            "mean_score": float(sub["score"].mean()),
+            "auc": _auc(sub["score"].values, sub[label_name].values),
+        })
+    per_animal = pd.DataFrame(animal_rows)
+
+    if output_xlsx is not None:
+        directory = os.path.dirname(os.path.abspath(output_xlsx))
+        os.makedirs(directory, exist_ok=True)
+        with pd.ExcelWriter(output_xlsx) as xl:
+            per_window.to_excel(xl, sheet_name="per_window", index=False)
+            per_recording.to_excel(xl, sheet_name="per_recording", index=False)
+            per_animal.to_excel(xl, sheet_name="per_animal", index=False)
+
+    return per_window, per_recording, per_animal

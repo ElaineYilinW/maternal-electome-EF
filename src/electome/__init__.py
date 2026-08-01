@@ -5,7 +5,7 @@ from anywhere on the system as::
 
     from electome.lfp_features  import batch_lfp_to_features, pair_recording_files
     from electome.models_registry import load_ef_model
-    from electome.workflow      import compute_loading_scores, compute_per_mouse_auc
+    from electome.workflow      import score_recordings, compute_loading_scores
     from electome.viz           import plot_scree_W_nmf, plot_dual_filter
     from electome.training      import run_loo_cv, train_final_model
 
