@@ -904,7 +904,7 @@ def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
 
 
 def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
-                          band="3band", period=None,
+                          band="3band", period=None, mouse_id=None,
                           fs=1000, window_duration=3.0,
                           label_name="onnest_label",
                           output_dir=None, strict=False, verbose=True,
@@ -933,6 +933,15 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
         it for every recording, or ``{key: stage}`` to set it per recording
         (``key`` is the LFP filename stem). Any label is accepted; it is
         metadata only and need not be one of the stages used in the paper.
+    mouse_id : str or dict, optional
+        Which animal each recording belongs to. Defaults to the ``Mouse...``
+        token in the filename, or the whole filename stem when there is none
+        -- so **two recordings of the same animal count as two animals unless
+        you say otherwise**, and per-animal statistics computed downstream
+        (e.g. :func:`~electome.workflow.compute_per_mouse_auc`, which groups
+        by this field) would be per-recording instead. Pass ``{key: animal}``
+        to group sessions, e.g.
+        ``mouse_id={'ratA_day1': 'ratA', 'ratA_day2': 'ratA'}``.
     output_dir : str, optional
         If given, each result is pickled to ``<output_dir>/<key>_<band>.pkl``.
     strict : bool
@@ -972,23 +981,29 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
             print(header)
             print(detail)
 
-    if isinstance(period, dict):
-        missing = [p["key"] for p in pairs if p["key"] not in period]
-        if missing:
-            msg = f"period dict has no entry for: {', '.join(missing)}"
-            if strict:
-                raise KeyError(msg)
-            if verbose:
-                print(f"  - {msg} (those recordings get an empty period)")
+    for name, mapping, consequence in (
+        ("period", period, "those recordings get an empty period"),
+        ("mouse_id", mouse_id, "those recordings fall back to the filename"),
+    ):
+        if isinstance(mapping, dict):
+            missing = [p["key"] for p in pairs if p["key"] not in mapping]
+            if missing:
+                msg = f"{name} dict has no entry for: {', '.join(missing)}"
+                if strict:
+                    raise KeyError(msg)
+                if verbose:
+                    print(f"  - {msg} ({consequence})")
 
     results, skipped = {}, []
     for p in pairs:
         key = p["key"]
         stage = period.get(key, "") if isinstance(period, dict) else period
+        animal = mouse_id.get(key) if isinstance(mouse_id, dict) else mouse_id
         try:
             feats = lfp_to_features(
                 p["lfp"], p["chans"], band=band, fs=fs,
                 window_duration=window_duration, period=stage,
+                mouse_id=animal,
                 label_file=p["onnest"], label_name=label_name,
                 # Band goes in the filename: running both parameterisations
                 # into one output_dir must not have the second overwrite the
