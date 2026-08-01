@@ -11,7 +11,7 @@ from anywhere on the system as::
 
 ``lfp_features`` is the entry point for new recordings: it turns raw
 ``_LFP.mat`` / ``_CHANS.mat`` (plus an optional behaviour-scoring sheet)
-into the feature matrix the models consume. See ``examples/demo.ipynb``.
+into the feature matrix the models consume. See ``examples/tutorial.ipynb``.
 
 The 6 paper-active ``.pt`` files in ``models/`` were saved by torch.save
 when the dCSFA-NMF class lived at the top-level module path

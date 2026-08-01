@@ -581,6 +581,7 @@ def _read_scoring(path):
 def lfp_to_features(lfp_file, chans_file, *, band="3band",
                     fs=1000, window_duration=3.0,
                     mouse_id=None, period=None,
+                    label_file=None, label_name="onnest_label",
                     onnest_xlsx=None, output_pkl=None,
                     expected_regions=MODEL_REGIONS,
                     lpne_loader=None, **overrides):
@@ -612,10 +613,19 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
     mouse_id, period : str, optional
         Written into the returned dict as per-window arrays. ``mouse_id``
         defaults to the ``Mouse...`` token in the LFP filename.
+    label_file : str, optional
+        Behaviour-scoring file (``.xlsx``/``.xls``/``.csv``) with ``START``
+        and ``STOP`` columns in seconds relative to the start of *this*
+        recording. Any scored behaviour works -- on-nest, licking, grooming,
+        nursing -- since all this step does is mark the windows a bout covers.
+        A window is labelled 1 when at least half of it falls inside a bout.
+        Omitted, no label array is produced (scores can still be computed).
+    label_name : str
+        Key the label array is stored under. Defaults to ``'onnest_label'``,
+        the name the released models' notebooks use; set e.g.
+        ``label_name='licking_label'`` when scoring a different behaviour.
     onnest_xlsx : str, optional
-        On-nest scoring file (``.xlsx``/``.xls``/``.csv``, columns START/STOP
-        in seconds relative to the start of this recording). If given,
-        ``onnest_label`` is added.
+        Deprecated alias for ``label_file``.
     output_pkl : str, optional
         If given, the returned dict is also pickled here.
     expected_regions : sequence of str or None
@@ -687,12 +697,14 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
 
     features['X'] = np.hstack([features['power'], features['coh_sq_coherence']])
 
-    if onnest_xlsx is not None:
+    if label_file is None:
+        label_file = onnest_xlsx          # deprecated alias
+    if label_file is not None:
         from .dataset_assembly import generate_onnest_labels_binary
-        onnest = _read_scoring(onnest_xlsx)
-        features.update(
-            generate_onnest_labels_binary(n_window, window_duration, onnest)
-        )
+        labels = generate_onnest_labels_binary(
+            n_window, window_duration, _read_scoring(label_file)
+        )['onnest_label']
+        features[label_name] = labels
 
     if output_pkl is not None:
         os.makedirs(os.path.dirname(os.path.abspath(output_pkl)), exist_ok=True)
@@ -713,17 +725,27 @@ def _suffixes(suffix):
     return tuple(s.lower() for s in suffix)
 
 
-def _listing(files_or_dir, suffix):
+def _listing(files_or_dir, suffix, recursive=False):
     """Accept a directory or an explicit list; return sorted matching paths.
 
     Suffix matching is case-insensitive (``_LFP.mat``, ``_lfp.mat`` and
     ``_LFP.MAT`` all count), and ``suffix`` may be a tuple of alternatives.
     Excel lock files (``~$...``) are ignored.
+
+    With ``recursive=True`` the directory is walked, so a layout of one
+    sub-folder per recording is scanned as readily as one flat folder.
     """
     sufs = _suffixes(suffix)
     if isinstance(files_or_dir, str):
         if not os.path.isdir(files_or_dir):
             raise NotADirectoryError(f"{files_or_dir} is not a directory")
+        if recursive:
+            found = []
+            for root, dirs, files in os.walk(files_or_dir):
+                dirs[:] = [d for d in dirs if not d.startswith('.')]
+                found += [os.path.join(root, fn) for fn in files
+                          if fn.lower().endswith(sufs) and not fn.startswith('~$')]
+            return sorted(found)
         return sorted(
             os.path.join(files_or_dir, fn)
             for fn in os.listdir(files_or_dir)
@@ -746,7 +768,8 @@ def _stem(path, suffix):
 
 def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
                          lfp_suffix="_LFP.mat", chans_suffix="_CHANS.mat",
-                         onnest_suffix=(".xlsx", ".xls", ".csv")):
+                         onnest_suffix=(".xlsx", ".xls", ".csv"),
+                         recursive=False):
     """Match each LFP file to its CHANS file, and optionally its scoring file.
 
     Pairing is by filename, in four passes, so that recordings whose three
@@ -776,6 +799,9 @@ def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
         Behaviour-scoring files. Omit if you only need scores, not labels.
     lfp_suffix, chans_suffix, onnest_suffix : str or tuple of str
         Filename endings that identify each file type.
+    recursive : bool
+        Walk sub-directories when a directory is given. Use this for the
+        one-folder-per-recording layout; leave ``False`` for one flat folder.
 
     Returns
     -------
@@ -795,9 +821,10 @@ def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
     """
     from .dataset_assembly import canonical_id
 
-    lfp_files = _listing(lfp_files, lfp_suffix)
-    chans_files = _listing(chans_files, chans_suffix)
-    onnest_files = [] if onnest_files is None else _listing(onnest_files, onnest_suffix)
+    lfp_files = _listing(lfp_files, lfp_suffix, recursive)
+    chans_files = _listing(chans_files, chans_suffix, recursive)
+    onnest_files = ([] if onnest_files is None
+                    else _listing(onnest_files, onnest_suffix, recursive))
 
     def _fmt(suffix):
         return ' / '.join(repr(s) for s in _suffixes(suffix))
@@ -879,10 +906,12 @@ def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
 def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
                           band="3band", period=None,
                           fs=1000, window_duration=3.0,
+                          label_name="onnest_label",
                           output_dir=None, strict=False, verbose=True,
                           expected_regions=MODEL_REGIONS,
                           lfp_suffix="_LFP.mat", chans_suffix="_CHANS.mat",
                           onnest_suffix=(".xlsx", ".xls", ".csv"),
+                          recursive=False,
                           lpne_loader=None, **overrides):
     """Run :func:`lfp_to_features` over several recordings.
 
@@ -893,9 +922,10 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
     Parameters
     ----------
     lfp_files, chans_files, onnest_files
-        Lists of paths, or directories to scan. ``onnest_files`` may be omitted
-        when labels are not needed -- the returned dicts then carry no
-        ``onnest_label`` and only window scores can be computed.
+        Lists of paths, or directories to scan. ``onnest_files`` holds the
+        behaviour-scoring files and may be omitted when labels are not needed
+        -- the returned dicts then carry no label array and only window scores
+        can be computed.
     band : {'3band', '1Hz'}
         Which published parameterisation to use.
     period : str or dict, optional
@@ -904,16 +934,21 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
         (``key`` is the LFP filename stem). Any label is accepted; it is
         metadata only and need not be one of the stages used in the paper.
     output_dir : str, optional
-        If given, each result is pickled to ``<output_dir>/<key>.pkl``.
+        If given, each result is pickled to ``<output_dir>/<key>_<band>.pkl``.
     strict : bool
         Raise on the first failure instead of skipping it.
     verbose : bool
         Print one line per recording plus a closing summary.
     expected_regions : sequence of str or None
         Passed to :func:`lfp_to_features`; defaults to :data:`MODEL_REGIONS`.
+    label_name : str
+        Key each recording's label array is stored under; see
+        :func:`lfp_to_features`.
     lfp_suffix, chans_suffix, onnest_suffix : str or tuple of str
         Filename endings identifying each file type, passed to
         :func:`pair_recording_files`.
+    recursive : bool
+        Walk sub-directories, for the one-folder-per-recording layout.
 
     Returns
     -------
@@ -925,7 +960,7 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
     pairs, problems = pair_recording_files(
         lfp_files, chans_files, onnest_files,
         lfp_suffix=lfp_suffix, chans_suffix=chans_suffix,
-        onnest_suffix=onnest_suffix,
+        onnest_suffix=onnest_suffix, recursive=recursive,
     )
 
     if problems:
@@ -954,8 +989,11 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
             feats = lfp_to_features(
                 p["lfp"], p["chans"], band=band, fs=fs,
                 window_duration=window_duration, period=stage,
-                onnest_xlsx=p["onnest"],
-                output_pkl=(os.path.join(output_dir, f"{key}.pkl")
+                label_file=p["onnest"], label_name=label_name,
+                # Band goes in the filename: running both parameterisations
+                # into one output_dir must not have the second overwrite the
+                # first, since the two feature matrices are not interchangeable.
+                output_pkl=(os.path.join(output_dir, f"{key}_{band}.pkl")
                             if output_dir else None),
                 expected_regions=expected_regions,
                 lpne_loader=lpne_loader, **overrides
@@ -971,10 +1009,10 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
         results[key] = feats
         if verbose:
             n_win = feats["X"].shape[0]
-            lab = feats.get("onnest_label")
+            lab = feats.get(label_name)
             extra = ""
             if lab is not None:
-                extra = f", on-nest {int(lab.sum())}/{n_win}"
+                extra = f", {label_name}=1 on {int(lab.sum())}/{n_win}"
                 if lab.sum() in (0, n_win):
                     extra += "  (single class -- no AUC possible)"
             print(f"  OK   {key}: X={feats['X'].shape}{extra}")

@@ -57,21 +57,28 @@ between sections 6 and the trailing exports; the other notebooks omit it.
 
 ## Quick start
 
-The fastest way to see the trained models in action is the runnable demo
-in [`examples/demo.ipynb`](examples/demo.ipynb). It goes the whole way from
-raw recording files to EF scores on one real recording shipped with the
-repository (`examples/demo_data/raw_lfp/`, a ~7 min excerpt of a control
-dam at P8): file-pairing checks, Welch power and coherence features,
-projection through a frozen EF, per-mouse AUC against the behaviour
-annotation, and the paper's scree plot and dual-filter heatmaps. Its last
-section is the recipe for running the same pipeline on **your own**
-recordings, in batches. No data-share access required.
+[`examples/tutorial.ipynb`](examples/tutorial.ipynb) is the tool manual: it
+takes raw recording files all the way to Electome Factor scores, and is
+written so you change one settings cell and re-run it on **your own**
+recordings. Two real P8 excerpts ship with the repository
+(`examples/demo_data/recordings/` — one control dam, one early-life-stress
+dam, ~7 min each) so it runs end to end with no data-share access.
+
+Every function call in it spells out all of its arguments, each argument is
+documented in the section above it, and everything it produces is written to
+disk rather than only displayed:
+
+| Path | Contents |
+| --- | --- |
+| `examples/results/features/<recording>_<band>.pkl` | the feature dict per recording, ready to reload |
+| `examples/results/scores.xlsx` | sheet `per_window` (one row per 3 s window) and sheet `per_recording` (one row per recording, with the AUC) |
+| `examples/results/figures/*.png` | loading-score time series, AUC bars, scree plot, dual-filter heatmaps |
 
 ### One-time setup
 
 These six lines make a clean Python virtual environment, install the
-package, and register the venv as a named Jupyter kernel so the demo
-notebook can find it.
+package, and register the venv as a named Jupyter kernel so the notebook
+can find it.
 
 ```bash
 git clone https://github.com/ElaineYilinW/maternal-electome-EF.git
@@ -87,15 +94,15 @@ On Windows, replace `source .venv/bin/activate` with
 `.venv\Scripts\Activate.ps1` (PowerShell) or `.venv\Scripts\activate.bat`
 (CMD), and use `python` instead of `python3`.
 
-### Run the demo — pick one of two ways
+### Run it — pick one of two ways
 
-Both ways produce the same six figures and per-mouse AUC table. The
-difference is just how you'd like to interact with the notebook.
+Both ways produce the same figures, tables and output files. The difference
+is just how you'd like to interact with the notebook.
 
 **A. Open in Jupyter** — interactive, runs cell-by-cell in a browser:
 
 ```bash
-jupyter notebook examples/demo.ipynb
+jupyter notebook examples/tutorial.ipynb
 ```
 
 The notebook opens in your browser. Click `Run` → `Run All Cells`. The
@@ -104,46 +111,50 @@ if not, use `Kernel` → `Change kernel` → `Python (electome)`, then
 restart the kernel and `Run All` again.
 
 Use this when you want to see results inline as each cell runs, or to
-edit cells (e.g. swap to a different EF model).
+edit the settings cell (a different EF model, your own data folder).
 
 **B. Run from the terminal** — one command, no browser:
 
 ```bash
-jupyter nbconvert --to notebook --execute examples/demo.ipynb \
-    --output demo_run.ipynb
+jupyter nbconvert --to notebook --execute examples/tutorial.ipynb \
+    --output tutorial_run.ipynb
 ```
 
-This runs every cell to completion and writes `demo_run.ipynb` with all
-outputs (text + figures) baked in. Open `demo_run.ipynb` afterwards in
-any Jupyter / VS Code to inspect.
+This runs every cell to completion and writes `tutorial_run.ipynb` with all
+outputs baked in, plus everything under `examples/results/`. Open
+`tutorial_run.ipynb` afterwards in any Jupyter / VS Code to inspect.
 
-Use this when you want a quick one-shot run or are scripting the demo
-in CI / automation.
+Use this when you want a quick one-shot run or are scripting it in CI /
+automation.
 
 ---
 
 ## Using it on your own recordings
 
-Section 9 of [`examples/demo.ipynb`](examples/demo.ipynb) is the full recipe;
-this is the short version.
+Sections 2 and 11 of [`examples/tutorial.ipynb`](examples/tutorial.ipynb) are
+the full recipe, with every argument documented; this is the short version.
 
-Put one `_LFP.mat`, one `_CHANS.mat` and (optionally) one behaviour-scoring
-`.xlsx` / `.xls` / `.csv` per recording in a folder, then:
+Lay your recordings out as one sub-folder per recording under a single parent
+folder — one `_LFP.mat`, one `_CHANS.mat` and (optionally) one
+behaviour-scoring `.xlsx` / `.xls` / `.csv` in each — then:
 
 ```python
 from electome.lfp_features import pair_recording_files, batch_lfp_to_features
 from electome.models_registry import load_ef_model
 from electome.workflow import compute_loading_scores, compute_per_mouse_auc
 
-pairs, problems = pair_recording_files('my_raw/', 'my_raw/', 'my_raw/')
+pairs, problems = pair_recording_files(
+    'my_recordings/', 'my_recordings/', 'my_recordings/', recursive=True)
 print(problems)          # check the matching BEFORE computing anything
 
 feats, skipped = batch_lfp_to_features(
-    'my_raw/', 'my_raw/', 'my_raw/',
+    'my_recordings/', 'my_recordings/', 'my_recordings/',
     band='3band',                        # or '1Hz'
     fs=1000,                             # your sampling rate -- see below
     period={'recA': 'P1', 'recB': 'P8'}, # free-text stage label, optional
-    output_dir='my_features/',           # optional: one <key>.pkl per recording
+    label_name='onnest_label',           # name of the behaviour you scored
+    output_dir='my_features/',           # one <key>_<band>.pkl per recording
+    recursive=True,                      # one sub-folder per recording
 )
 
 model = load_ef_model('OnnestVsOffnest_3band')
@@ -159,7 +170,7 @@ than a quietly wrong answer:
 | Brain regions | `BLA, CeA, IL, MeA, NAc, PrL, VHipp, VTA`. Variants (`Nac`, `NAcc`, `vHipp`, `VHPC`, `ACB`, `PL`) are recognised; anything else is named in the error. |
 | Sampling rate | `fs` defaults to 1000 Hz and no `.mat` file records the true rate — **set it if yours differs**. Must be a whole multiple of 100 Hz (`3band`) or 200 Hz (`1Hz`). |
 | Recording length | At least one 3-second window. |
-| Scoring times | `START` / `STOP` in seconds from the start of that recording. |
+| Scoring times | `START` / `STOP` in seconds from the start of that recording. Any scored behaviour works, not just on-nest — name it with `label_name`. |
 
 File naming is flexible: suffix matching is case-insensitive and the three
 files may differ in case and `_`/`-`/space; pass `lfp_suffix=` / `chans_suffix=`
@@ -195,10 +206,10 @@ be linked here once published.
 
 The task notebooks under `notebooks/` load per-mouse spectral-feature `.pkl`
 files from the lab data share, and access to those is restricted to lab
-members. Nothing else needs them: `examples/demo.ipynb` ships with one real
-recording excerpt, so the raw-LFP → features → EF-score pipeline can be run
-end-to-end — on the example, or on your own recordings — without any data-share
-access.
+members. Nothing else needs them: `examples/tutorial.ipynb` ships with two real
+recording excerpts, so the raw-LFP → features → EF-score pipeline can be run
+end-to-end — on the examples, or on your own recordings — without any
+data-share access.
 
 ---
 

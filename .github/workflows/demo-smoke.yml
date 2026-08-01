@@ -1,6 +1,6 @@
-name: demo
+name: tutorial
 
-# Smoke test that `git clone -> pip install -e . -> run examples/demo.ipynb`
+# Smoke test that `git clone -> pip install -e . -> run examples/tutorial.ipynb`
 # actually works on a fresh machine, across the OS / Python matrix.
 #
 # The portable `.pt` format (see scripts/convert_models_to_portable.py)
@@ -58,35 +58,36 @@ jobs:
                 m = load_ef_model(name)
                 print(f"{name}: dim_in={m.dim_in}, h={m.h}")
 
-      - name: Execute examples/demo.ipynb
+      - name: Execute examples/tutorial.ipynb
         shell: bash
         run: |
           # --allow-errors so nbconvert ALWAYS writes the executed notebook.
           # Without it a failing cell makes nbconvert write nothing, and the
           # check below would silently inspect the committed notebook (which
           # carries the outputs of a successful local run) and pass.
-          # Writing to demo_ci.ipynb keeps that file distinct from the
+          # Writing to tutorial_ci.ipynb keeps that file distinct from the
           # committed one, so "no output" is unambiguous.
           set +e
           jupyter nbconvert --to notebook --execute --allow-errors \
-              examples/demo.ipynb --output demo_ci.ipynb
+              examples/tutorial.ipynb --output tutorial_ci.ipynb
           rc=$?
           set -e
 
           NBCONVERT_RC=$rc python <<'PY'
           import json, os, re, sys
 
-          # The demo draws: loading-score time series, scree plot, and the
-          # 3-band (bar) and 1-Hz (dot) dual-filter heatmaps.
-          EXPECTED_FIGURES = 4
+          # The tutorial draws: loading-score time series, per-recording AUC
+          # bars, scree plot, and the 3-band (bar) and 1-Hz (dot) dual-filter
+          # heatmaps.
+          EXPECTED_FIGURES = 5
 
           ansi = re.compile(r'\x1b\[[0-9;]*m')
           try:
-              nb = json.load(open('examples/demo_ci.ipynb'))
+              nb = json.load(open('examples/tutorial_ci.ipynb'))
           except Exception as e:
               # nbconvert never wrote a notebook (early / infra failure);
               # emit a generic annotation so the API surfaces something readable.
-              msg = f"failed to read demo_ci.ipynb after nbconvert: {e}"
+              msg = f"failed to read tutorial_ci.ipynb after nbconvert: {e}"
               msg = msg.replace('%', '%25').replace('\n', '%0A')
               print(f"::error title=nbconvert produced no output::{msg}")
               sys.exit(1)
@@ -103,7 +104,7 @@ jobs:
                       head = f"{o.get('ename','?')}: {o.get('evalue','?')}"
                       body = (head + "\n\n" + tb)[-3000:]
                       body = body.replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
-                      print(f"::error file=examples/demo.ipynb,title=cell {ci} {o.get('ename','error')}::{body}")
+                      print(f"::error file=examples/tutorial.ipynb,title=cell {ci} {o.get('ename','error')}::{body}")
                   if 'image/png' in o.get('data', {}):
                       n_png += 1
 
@@ -121,5 +122,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: demo-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: examples/demo_ci.ipynb
+          path: examples/tutorial_ci.ipynb
           if-no-files-found: ignore
