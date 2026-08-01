@@ -7,7 +7,7 @@
 # (small, ~3 MB total, needed for the examples/vignette.ipynb walkthrough)
 !models/*.pt
 
-# (the example recordings in examples/demo_data/recordings/ are un-ignored at the
+# (the example recordings in examples/demo_data/{lfps,chans,behavior}/ are un-ignored at the
 #  bottom of this file — the exception has to come after the *.xlsx rule)
 
 # Backup / dirty notebooks
@@ -83,7 +83,8 @@ models/README.local.md
 
 # Exception (must come last — later rules win): the example recording shipped
 # with examples/tutorial.ipynb: two real P8 recordings (one control dam, one
-# ELS dam) trimmed to ~7 min excerpts, ~21 MB each -- LFP + CHANS + the
-# on-nest scoring sheet, one sub-folder per recording.
-!examples/demo_data/recordings/*/*.mat
-!examples/demo_data/recordings/*/*.xlsx
+# ELS dam) trimmed to ~7 min excerpts, ~21 MB each -- sorted by file type into
+# lfps/, chans/ and behavior/, the layout the tutorial documents.
+!examples/demo_data/lfps/*.mat
+!examples/demo_data/chans/*.mat
+!examples/demo_data/behavior/*.xlsx

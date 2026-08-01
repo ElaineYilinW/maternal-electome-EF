@@ -61,8 +61,8 @@ between sections 6 and the trailing exports; the other notebooks omit it.
 takes raw recording files all the way to Electome Factor scores, and is
 written so you change one settings cell and re-run it on **your own**
 recordings. Two real P8 excerpts ship with the repository
-(`examples/demo_data/recordings/` — one control dam, one early-life-stress
-dam, ~7 min each) so it runs end to end with no data-share access.
+(`examples/demo_data/` — one control dam, one early-life-stress dam, ~7 min
+each) so it runs end to end with no data-share access.
 
 Every function call in it spells out all of its arguments, each argument is
 documented in the section above it, and everything it produces is written to
@@ -134,27 +134,27 @@ automation.
 Sections 2 and 11 of [`examples/tutorial.ipynb`](examples/tutorial.ipynb) are
 the full recipe, with every argument documented; this is the short version.
 
-Lay your recordings out as one sub-folder per recording under a single parent
-folder — one `_LFP.mat`, one `_CHANS.mat` and (optionally) one
-behaviour-scoring `.xlsx` / `.xls` / `.csv` in each — then:
+Sort your files into three folders by type — every `_LFP.mat` in one, every
+`_CHANS.mat` in one, every behaviour-scoring `.xlsx` / `.xls` / `.csv` in one.
+Animals, groups and days all mixed together; nothing needs separating by
+condition. Then:
 
 ```python
 from electome.lfp_features import pair_recording_files, batch_lfp_to_features
 from electome.models_registry import load_ef_model
 from electome.workflow import score_recordings
 
-pairs, problems = pair_recording_files(
-    'my_recordings/', 'my_recordings/', 'my_recordings/', recursive=True)
+pairs, problems = pair_recording_files('lfps/', 'chans/', 'behavior/')
 print(problems)          # check the matching BEFORE computing anything
 
 feats, skipped = batch_lfp_to_features(
-    'my_recordings/', 'my_recordings/', 'my_recordings/',
+    'lfps/', 'chans/', 'behavior/',      # pass None for behavior = scores only
     band='3band',                        # or '1Hz'
     fs=1000,                             # your sampling rate -- see below
     period={'recA': 'P1', 'recB': 'P8'}, # free-text stage label, optional
+    mouse_id=None,                       # set it if one animal has >1 recording
     label_name='onnest_label',           # name of the behaviour you scored
     output_dir='my_features/',           # one <key>_<band>.pkl per recording
-    recursive=True,                      # one sub-folder per recording
 )
 
 model = load_ef_model('OnnestVsOffnest_3band')
