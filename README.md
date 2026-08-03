@@ -77,19 +77,28 @@ disk rather than only displayed:
 A frozen copy of one run ships in
 [`examples/example_output/`](examples/example_output/) — the spreadsheet and
 all five figures — so you can see what comes out before installing anything.
-Your own run writes to `examples/results/`, which is git-ignored, so it never
-collides with the committed copy.
+Your own run writes to `examples/results/` and leaves that copy alone.
 
 ### One-time setup
 
-These six lines make a clean Python virtual environment, install the
-package, and register the venv as a named Jupyter kernel so the notebook
-can find it.
+**Get the code.** Either press the green **Code** button on
+[the GitHub page](https://github.com/ElaineYilinW/maternal-electome-EF) and
+choose **Download ZIP**, then unzip it — no git needed — or, if you have git:
 
 ```bash
 git clone https://github.com/ElaineYilinW/maternal-electome-EF.git
-cd maternal-electome-EF
+```
 
+**Then set up Python.** Open a terminal in the folder you just unzipped or
+cloned — on macOS, right-click the folder → Services → New Terminal at Folder;
+on Windows, Shift-right-click inside it → Open PowerShell window here. (The
+ZIP unzips to `maternal-electome-EF-main`, the clone to
+`maternal-electome-EF`; either is fine, just be inside it.)
+
+These four lines make a clean Python environment, install the package, and
+register it as a Jupyter kernel so the notebook can find it.
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
