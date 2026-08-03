@@ -74,6 +74,10 @@ disk rather than only displayed:
 | `examples/results/scores.xlsx`, `scores_1Hz.xlsx` | sheets `per_window` (one row per 3 s window), `per_recording`, and `per_animal` (sessions pooled, the level the paper reports) |
 | `examples/results/figures/*.png` | loading-score time series, AUC bars, scree plot, dual-filter heatmaps |
 
+One run's output is committed, so you can look at
+[`examples/results/`](examples/results/) — the spreadsheet and all five figures
+— before installing anything.
+
 ### One-time setup
 
 These six lines make a clean Python virtual environment, install the
