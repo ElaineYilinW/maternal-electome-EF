@@ -165,7 +165,7 @@ print(problems)          # check the matching BEFORE computing anything
 feats, skipped = batch_lfp_to_features(
     'lfps/', 'chans/', 'behavior/',      # pass None for behavior = scores only
     band='3band',                        # or '1Hz'
-    fs=1000,                             # your sampling rate -- see below
+    fs=1000,                             # fixed: these recordings are 1000 Hz
     period={'recA': 'P1', 'recB': 'P8'}, # free-text stage label, optional
     mouse_id=None,                       # set it if one animal has >1 recording
     label_name='onnest_label',           # name of the behaviour you scored
@@ -193,7 +193,7 @@ than a quietly wrong answer:
 | What | Requirement |
 | --- | --- |
 | Brain regions | `BLA, CeA, IL, MeA, NAc, PrL, VHipp, VTA`. Variants (`Nac`, `NAcc`, `vHipp`, `VHPC`, `ACB`, `PL`) are recognised; anything else is named in the error. |
-| Sampling rate | `fs` defaults to 1000 Hz and no `.mat` file records the true rate — **set it if yours differs**. Must be a whole multiple of 100 Hz (`3band`) or 200 Hz (`1Hz`). |
+| Sampling rate | 1000 Hz. This is fixed, not a setting: no `.mat` records the true rate, so a mismatch would shift every frequency silently. Ask before running recordings acquired at another rate. |
 | Recording length | At least one 3-second window. |
 | Scoring times | `START` / `STOP` in seconds from the start of that recording. Any scored behaviour works, not just on-nest — name it with `label_name`. |
 
