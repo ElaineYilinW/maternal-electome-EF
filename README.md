@@ -120,10 +120,13 @@ is just how you'd like to interact with the notebook.
 jupyter notebook examples/tutorial.ipynb
 ```
 
-The notebook opens in your browser. Click `Run` → `Run All Cells`. The
-`Python (electome)` kernel is auto-selected from the notebook's metadata;
-if not, use `Kernel` → `Change kernel` → `Python (electome)`, then
-restart the kernel and `Run All` again.
+The notebook opens in your browser. Click `Run` → `Run All Cells`.
+
+The notebook asks for the `Python (electome)` kernel, which the last line of
+the setup above registers — so if you followed those steps, it is selected for
+you. If Jupyter says the kernel is missing, or offers to pick another one, run
+that `ipykernel install` line once more, reload the page, and check
+`Kernel` → `Change kernel` → `Python (electome)`.
 
 Use this when you want to see results inline as each cell runs, or to
 edit the settings cell (a different EF model, your own data folder).
