@@ -135,15 +135,22 @@ edit the settings cell (a different EF model, your own data folder).
 
 ```bash
 jupyter nbconvert --to notebook --execute examples/tutorial.ipynb \
-    --output tutorial_run.ipynb
+    --output tutorial_run.ipynb --ExecutePreprocessor.timeout=86400
 ```
 
 This runs every cell to completion and writes `tutorial_run.ipynb` with all
 outputs baked in, plus everything under `examples/results/`. Open
-`tutorial_run.ipynb` afterwards in any Jupyter / VS Code to inspect.
+`tutorial_run.ipynb` afterwards in any Jupyter / VS Code to inspect. On the
+two example recordings it takes about half a minute; on full-length recordings
+it will be minutes, and the terminal stays silent while it works — that is
+normal, not a hang.
 
-Use this when you want a quick one-shot run or are scripting it in CI /
-automation.
+The `--ExecutePreprocessor.timeout` is there because some versions of
+`nbconvert` stop a cell after 30 seconds by default, which is fine for the
+examples and not for real recordings. In Jupyter (option A) there is no such
+limit.
+
+Use this when you want a one-shot run or are scripting it.
 
 ---
 
