@@ -1455,21 +1455,23 @@ def create_group_visualizations(filtered_df, selected_mice, order):
 # Vignette / general-purpose plot helpers
 # =============================================================================
 
-def plot_scree_W_nmf(W, k=0, thresholds=(0.8, 0.9, 0.95), n_power_rows=8,
-                     ax=None):
+def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
+                     ax=None, title=None):
     """Sorted element-value "scree" plot for factor ``k`` of ``W``.
 
-    Each entry of ``W[k, :]`` is drawn as a marker at its rank position (after
-    sorting the entries by descending value). Marker shape distinguishes
-    power features (``^``, the first ``n_power_rows * num_freqs`` entries when
-    W is reshaped to (36, num_freqs)) from coherence features (``o``).
-    Vertical dashed lines mark the rank index at which the cumulative
-    squared-L2 of the sorted-by-value entries crosses each threshold in
-    ``thresholds``.
+    Each entry of ``W[k, :]`` is drawn as a marker at its rank position, after
+    sorting the entries by descending value. Marker shape and colour separate
+    power features (``^``, the first ``n_power_rows`` of the 36 channel rows
+    when ``W`` is reshaped to (36, n_freq)) from coherence features (``o``).
 
-    This is the "scree" view used in the paper: it shows the raw distribution
-    of feature contributions, so the reader can see the elbow directly,
-    rather than the integrated CDF.
+    Vertical guides mark the rank at which the cumulative squared-L2 of the
+    sorted entries first reaches each threshold, and each guide is labelled
+    the legend gives the count for each -- how many features it takes to reach
+    that cutoff, which is usually what the figure is being read for.
+
+    Marker size, edge width and transparency are scaled to the number of
+    features, so the 108-feature guided-band factors and the 1944-feature
+    1-Hz factors both stay readable in the same call.
 
     Parameters
     ----------
@@ -1477,14 +1479,17 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.8, 0.9, 0.95), n_power_rows=8,
         Decoder weight matrix from ``model.get_W_nmf()``, shape
         (n_factors, n_features).
     k : int
-        Which factor to inspect (default 0).
+        Which factor to inspect (default 0, the supervised one).
     thresholds : iterable[float]
-        Cumulative squared-L2 thresholds to mark with vertical guides.
-        Defaults to ``(0.8, 0.9, 0.95)`` to match the paper figures.
+        Cumulative squared-L2 cutoffs to mark, as fractions. Defaults to
+        ``(0.5, 0.6, 0.7, 0.8)``.
     n_power_rows : int
         How many of the 36 (region + region_pair) rows are power features
         (default 8 -- 8 regions). The rest are coherence (28 region pairs).
     ax : matplotlib.axes.Axes, optional
+    title : str, optional
+        Replaces the default title; pass the EF name so a saved figure says
+        which model it came from.
 
     Returns
     -------
@@ -1496,70 +1501,88 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.8, 0.9, 0.95), n_power_rows=8,
     row = np.asarray(W[k, :], dtype=float)
     n_features = len(row)
 
-    # Reshape to (36, num_freqs) to recover (row, col) = (region/pair, freq)
+    # Reshape to (36, n_freq) to recover (row, col) = (region/pair, freq)
     # indices for each entry, so we can mark "power" vs "coherence".
     total_rows = n_power_rows + 28
     num_freqs = n_features // total_rows
     assert n_features == total_rows * num_freqs, (
-        f"W[{k}] length {n_features} not divisible by 36"
+        f"W[{k}] length {n_features} not divisible by {total_rows}"
     )
 
-    # Sort by descending value
     sorted_idx = np.argsort(row)[::-1]
     sorted_values = row[sorted_idx]
-    # Recover original (row_index, col_index) for each sorted entry
-    orig_row, orig_col = np.unravel_index(sorted_idx, (total_rows, num_freqs))
+    orig_row, _ = np.unravel_index(sorted_idx, (total_rows, num_freqs))
 
-    # Cumulative-squared-L2 thresholds
-    squared = row ** 2
-    sorted_sq = squared[sorted_idx]
-    cum = np.cumsum(sorted_sq)
-    total_sq = cum[-1] if cum[-1] > 0 else 1.0
-    cum_frac = cum / total_sq
-    thr_indices = []
+    # Rank at which the cumulative squared-L2 first reaches each threshold.
+    sorted_sq = (row ** 2)[sorted_idx]
+    cum_frac = np.cumsum(sorted_sq) / (sorted_sq.sum() or 1.0)
+    thresholds = list(thresholds)
+    thr_counts = []
     for t in thresholds:
-        idx_arr = np.where(cum_frac >= t)[0]
-        thr_indices.append(int(idx_arr[0]) if len(idx_arr) else n_features - 1)
+        hit = np.where(cum_frac >= t)[0]
+        thr_counts.append(int(hit[0]) + 1 if len(hit) else n_features)
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(9, 5.5))
     else:
         fig = ax.figure
 
-    # Scale to a "10^exp" multiplier embedded in the y-label so ticks read
-    # e.g. "1.0 / 2.0" instead of "0.01 / 0.02".
+    # Put the y axis in units of 10^exp so ticks read "1.0, 2.0" rather than
+    # "0.01, 0.02"; the exponent goes in the axis label.
     ymax_abs = float(np.max(np.abs(sorted_values))) if n_features else 0.0
     exponent = int(np.floor(np.log10(ymax_abs))) if ymax_abs > 0 else 0
-    scale = 10.0 ** (-exponent)
-    sorted_values_scaled = sorted_values * scale
+    values = sorted_values * (10.0 ** (-exponent))
 
-    # Plot power features (triangles) and coherence features (circles) on top
+    # A marker that reads well at n=108 is a solid smear at n=1944.
+    if n_features <= 200:
+        msize, edge, alpha = 46, 0.5, 0.85
+    elif n_features <= 800:
+        msize, edge, alpha = 14, 0.0, 0.65
+    else:
+        msize, edge, alpha = 5, 0.0, 0.45
+
     is_power = orig_row < n_power_rows
     x = np.arange(n_features)
-    ax.scatter(x[is_power], sorted_values_scaled[is_power], marker='^', s=60,
-               color='steelblue', edgecolors='black', linewidths=0.5,
-               alpha=0.8, label='Power', zorder=3)
-    ax.scatter(x[~is_power], sorted_values_scaled[~is_power], marker='o', s=50,
-               color='lightcoral', edgecolors='black', linewidths=0.5,
-               alpha=0.8, label='Coherence', zorder=3)
+    ax.scatter(x[~is_power], values[~is_power], marker='o', s=msize,
+               color='#E8836F', edgecolors='black', linewidths=edge,
+               alpha=alpha, label=f'Coherence  (n = {int((~is_power).sum())})',
+               zorder=2)
+    ax.scatter(x[is_power], values[is_power], marker='^', s=msize * 1.15,
+               color='#2E6F9E', edgecolors='black', linewidths=edge,
+               alpha=min(1.0, alpha + 0.15),
+               label=f'Power  (n = {int(is_power.sum())})', zorder=3)
 
-    # Threshold vertical lines
-    ymax = sorted_values_scaled.max() if sorted_values_scaled.max() > 0 else 1.0
-    for t, idx in zip(thresholds, thr_indices):
-        ax.axvline(idx, color='green', linestyle='--', linewidth=1.5, alpha=0.7)
-        ax.text(idx, ymax, f'cum. L²={t:.2f}', rotation=90,
-                va='top', ha='right', color='green', fontsize=9)
+    # Cutoff guides. Labels sit above the axes, horizontal, so they never
+    # cover the data and do not collide with each other however many there are.
+    ax.set_xlim(-n_features * 0.02, n_features * 1.02)
+    ymin, ymax = 0.0, float(values.max()) if n_features else 1.0
+    ax.set_ylim(ymin - 0.04 * ymax, ymax * 1.06)
+    colours = plt.cm.viridis(np.linspace(0.15, 0.72, max(len(thresholds), 1)))
+    # The cutoffs can land only a few ranks apart (11, 15, 20, 27 out of 108 is
+    # typical for the guided-band factors), so the counts go in the legend
+    # rather than next to the lines, where they would overprint each other.
+    for (t, cnt), colour in zip(zip(thresholds, thr_counts), colours):
+        ax.axvline(cnt, color=colour, linestyle='--', linewidth=1.5,
+                   alpha=0.95, zorder=1,
+                   label=f'{t:.0%} of L²  —  {cnt} features')
 
-    ax.set_xlabel(f'Sorted feature index (n = {n_features})')
-    if exponent == 0:
-        ax.set_ylabel(f'Element value in W[{k}]')
-    else:
-        ax.set_ylabel(rf'Element value in W[{k}] (×$10^{{{exponent}}}$)')
-    ax.set_title(f'Scree plot — factor {k} sorted entries')
-    ax.set_xlim(-2, n_features + 1)
-    ax.grid(alpha=0.3)
-    ax.legend(loc='upper right')
+    ax.set_xlabel(f'Features ranked by weight  (n = {n_features})')
+    ylab = f'Weight in factor {k}'
+    if exponent != 0:
+        ylab += rf'  ($\times 10^{{{exponent}}}$)'
+    ax.set_ylabel(ylab)
+    ax.set_title(title or f'Feature contributions to factor {k}',
+                 pad=10, loc='left')
+    ax.grid(alpha=0.25, linewidth=0.6)
+    ax.spines[['top', 'right']].set_visible(False)
+    # markerscale: at n=1944 the plotted dots are 5 pt, which is invisible in
+    # a legend key, so the key is drawn larger than the data.
+    leg = ax.legend(loc='upper right', fontsize=8.5, framealpha=0.9,
+                    edgecolor='0.8', borderpad=0.7, labelspacing=0.5,
+                    markerscale=max(1.0, 46.0 / msize) ** 0.5)
+    leg.set_zorder(5)
     return fig
+
 
 
 def plot_dual_filter(model, train_dict, *,
