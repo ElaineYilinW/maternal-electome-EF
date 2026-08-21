@@ -1456,55 +1456,60 @@ def create_group_visualizations(filtered_df, selected_mice, order):
 # =============================================================================
 
 def scree_cutoffs(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8)):
-    """How many features it takes to reach each share of a factor's strength.
+    """How many elements are selected at each threshold of factor ``k``.
 
-    "Strength" is the sum of the squared weights of factor ``k`` -- the same
-    quantity a PCA scree plot calls explained variance. Sorting the weights
-    from largest to smallest and accumulating, this returns the rank at which
-    the running total first reaches each threshold.
+    This is the paper's feature-thresholding rule (Supplement, "Feature
+    Thresholding"): rank the elements of the EF loading vector by squared
+    loading magnitude, accumulate the proportion of the total squared
+    loadings, and select elements from largest to smallest while the running
+    total stays within the threshold. The element that would push the total
+    past the threshold is not selected -- the same ``cumulative_sum <=
+    threshold`` rule :func:`electome.analysis.process_W_nmf_k` uses to build
+    the circos and heatmap figures, so the counts here match the published
+    ones (on-nest 3-band = 19 elements at 70 %, maternal stage 3-band = 16,
+    lick-groom = 18).
 
-    These are the numbers the vertical guides in :func:`plot_scree_W_nmf` sit
-    at. The figure lets you read them off the x axis; this function gives them
-    to you directly, e.g. to pick how many features to carry into a follow-up
-    analysis.
+    These are the numbers the cut-off lines in :func:`plot_scree_W_nmf` sit
+    at. The figure lets you read them off the x axis; this function gives
+    them to you directly.
 
     Parameters
     ----------
     W : torch.Tensor or np.ndarray
-        Decoder weight matrix from ``model.get_W_nmf()``, shape
-        (n_factors, n_features).
+        The EF loading matrix from ``model.get_W_nmf()``, shape
+        (n_factors, n_elements). ``get_W_nmf`` already applies the Softplus
+        and the per-factor L2 normalisation, so this is the same matrix the
+        paper's selection ran on.
     k : int
         Which factor (default 0, the supervised one).
     thresholds : iterable[float]
-        Shares to report, as fractions. Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
+        Thresholds to report, as fractions of the total squared loadings.
+        Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
 
     Returns
     -------
     dict
-        ``{threshold: n_features}``, in the order given.
+        ``{threshold: n_elements}``, in the order given.
 
     Examples
     --------
     >>> scree_cutoffs(model.get_W_nmf(), k=0)          # doctest: +SKIP
-    {0.5: 11, 0.6: 15, 0.7: 20, 0.8: 27}
+    {0.5: 10, 0.6: 14, 0.7: 19, 0.8: 26}
     """
     import torch as _torch
     if isinstance(W, _torch.Tensor):
         W = W.detach().cpu().numpy()
     row = np.asarray(W[k, :], dtype=float)
-    n_features = len(row)
 
-    # Accumulate in float64: W is stored float32, and with ~2000 features the
+    # Accumulate in float64: W is stored float32, and with ~2000 elements the
     # rounding of a float32 cumsum is enough to move a count by one when the
-    # curve crosses a threshold almost exactly (PreVsPost134_1Hz at 80 % sits
-    # 8e-7 below the mark at rank 590, so the answer is 591, not 590).
+    # curve crosses a threshold almost exactly.
     sorted_sq = np.sort(row.astype(np.float64) ** 2)[::-1]
     cum_frac = np.cumsum(sorted_sq) / (sorted_sq.sum() or 1.0)
 
     out = {}
     for t in thresholds:
-        hit = np.where(cum_frac >= t)[0]
-        out[t] = int(hit[0]) + 1 if len(hit) else n_features
+        out[t] = int((cum_frac <= t).sum())
     return out
 
 
@@ -1517,30 +1522,30 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     power features (``^``, the first ``n_power_rows`` of the 36 channel rows
     when ``W`` is reshaped to (36, n_freq)) from coherence features (``o``).
 
-    Vertical guides mark how far down the ranking you have to go to account
-    for 50 / 60 / 70 / 80 % of the factor's total strength, where "strength"
-    means the sum of the squared weights -- the same quantity a PCA scree
-    plot calls explained variance. Each guide is drawn so that exactly that
-    many features fall to its left, so the count can be read straight off the
-    x axis; the counts are also returned by :func:`scree_cutoffs` if you want
-    the numbers rather than the picture.
+    Dashed lines mark the element cut-off points at 50 / 60 / 70 / 80 % of
+    the total squared loadings, following the paper's feature-thresholding
+    rule (see :func:`scree_cutoffs`). Each line is drawn just past the last
+    selected element, so the number of elements selected at that threshold
+    can be read straight off the x axis; :func:`scree_cutoffs` returns the
+    same numbers if you want them as values.
 
     Marker size, edge width and transparency are scaled to the number of
-    features, so the 108-feature guided-band factors and the 1944-feature
+    elements, so the 108-element guided-band factors and the 1944-element
     1-Hz factors both stay readable in the same call.
 
     Parameters
     ----------
     W : torch.Tensor or np.ndarray
-        Decoder weight matrix from ``model.get_W_nmf()``, shape
-        (n_factors, n_features).
+        The EF loading matrix from ``model.get_W_nmf()``, shape
+        (n_factors, n_elements).
     k : int
         Which factor to inspect (default 0, the supervised one).
     thresholds : iterable[float]
-        Where to draw the cutoff guides, as fractions of the factor's total
-        strength. Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
+        Where to draw the cut-off lines, as fractions of the total squared
+        loadings. Defaults to ``(0.5, 0.6, 0.7, 0.8)``, the four thresholds
+        the supplemental figures report.
     n_power_rows : int
-        How many of the 36 (region + region_pair) rows are power features
+        How many of the 36 (region + region_pair) rows are power elements
         (default 8 -- 8 regions). The rest are coherence (28 region pairs).
     ax : matplotlib.axes.Axes, optional
     title : str, optional
@@ -1593,40 +1598,38 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
         msize, edge, alpha = 5, 0.0, 0.45
 
     is_power = orig_row < n_power_rows
-    # Rank 1 = largest weight, so the x axis reads as a rank and the number of
-    # features left of a cutoff guide is the count for that cutoff.
+    # Rank 1 = largest loading, so the x axis reads as a rank and the number
+    # of elements left of a cut-off line is the count at that threshold.
     x = np.arange(1, n_features + 1)
     ax.scatter(x[~is_power], values[~is_power], marker='o', s=msize,
                color='#E8836F', edgecolors='black', linewidths=edge,
                alpha=alpha,
-               label=f'Coherence between two regions  '
-                     f'({int((~is_power).sum())} features)',
+               label=f'Coherence  ({int((~is_power).sum())} elements)',
                zorder=2)
     ax.scatter(x[is_power], values[is_power], marker='^', s=msize * 1.15,
                color='#2E6F9E', edgecolors='black', linewidths=edge,
                alpha=min(1.0, alpha + 0.15),
-               label=f'Power within one region  '
-                     f'({int(is_power.sum())} features)', zorder=3)
+               label=f'Power  ({int(is_power.sum())} elements)', zorder=3)
 
     ax.set_xlim(0.5 - n_features * 0.02, n_features + 0.5 + n_features * 0.02)
     ymin, ymax = 0.0, float(values.max()) if n_features else 1.0
     ax.set_ylim(ymin - 0.04 * ymax, ymax * 1.06)
     colours = plt.cm.viridis(np.linspace(0.15, 0.72, max(len(thresholds), 1)))
-    # Drawn at cnt + 0.5, i.e. in the gap after the cnt-th marker, so exactly
-    # cnt features sit to the left of the line and the reader can take the
-    # count off the x axis instead of from a label.
+    # Drawn at cnt + 0.5, i.e. in the gap after the last selected element, so
+    # exactly cnt elements sit to the left of the line and the reader can take
+    # the count off the x axis instead of from a label.
     for (t, cnt), colour in zip(zip(thresholds, thr_counts), colours):
         ax.axvline(cnt + 0.5, color=colour, linestyle='--', linewidth=1.5,
                    alpha=0.95, zorder=1,
-                   label=f'{t:.0%} of factor strength')
+                   label=f'{t:.0%} Threshold')
 
-    ax.set_xlabel(f'Feature rank, strongest first  '
-                  f'({n_features} features in total)')
-    ylab = f'Feature weight in factor {k}'
+    ax.set_xlabel(f'Elements ranked by loading, largest first  '
+                  f'({n_features} elements in total)')
+    ylab = f'Loading in factor {k}'
     if exponent != 0:
         ylab += rf'  ($\times 10^{{{exponent}}}$)'
     ax.set_ylabel(ylab)
-    ax.set_title(title or f'How much each feature contributes to factor {k}',
+    ax.set_title(title or f'Element contributions to factor {k}',
                  pad=10, loc='left')
     ax.grid(alpha=0.25, linewidth=0.6)
     ax.spines[['top', 'right']].set_visible(False)
