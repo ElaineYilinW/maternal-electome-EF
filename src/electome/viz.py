@@ -1455,6 +1455,59 @@ def create_group_visualizations(filtered_df, selected_mice, order):
 # Vignette / general-purpose plot helpers
 # =============================================================================
 
+def scree_cutoffs(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8)):
+    """How many features it takes to reach each share of a factor's strength.
+
+    "Strength" is the sum of the squared weights of factor ``k`` -- the same
+    quantity a PCA scree plot calls explained variance. Sorting the weights
+    from largest to smallest and accumulating, this returns the rank at which
+    the running total first reaches each threshold.
+
+    These are the numbers the vertical guides in :func:`plot_scree_W_nmf` sit
+    at. The figure lets you read them off the x axis; this function gives them
+    to you directly, e.g. to pick how many features to carry into a follow-up
+    analysis.
+
+    Parameters
+    ----------
+    W : torch.Tensor or np.ndarray
+        Decoder weight matrix from ``model.get_W_nmf()``, shape
+        (n_factors, n_features).
+    k : int
+        Which factor (default 0, the supervised one).
+    thresholds : iterable[float]
+        Shares to report, as fractions. Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
+
+    Returns
+    -------
+    dict
+        ``{threshold: n_features}``, in the order given.
+
+    Examples
+    --------
+    >>> scree_cutoffs(model.get_W_nmf(), k=0)          # doctest: +SKIP
+    {0.5: 11, 0.6: 15, 0.7: 20, 0.8: 27}
+    """
+    import torch as _torch
+    if isinstance(W, _torch.Tensor):
+        W = W.detach().cpu().numpy()
+    row = np.asarray(W[k, :], dtype=float)
+    n_features = len(row)
+
+    # Accumulate in float64: W is stored float32, and with ~2000 features the
+    # rounding of a float32 cumsum is enough to move a count by one when the
+    # curve crosses a threshold almost exactly (PreVsPost134_1Hz at 80 % sits
+    # 8e-7 below the mark at rank 590, so the answer is 591, not 590).
+    sorted_sq = np.sort(row.astype(np.float64) ** 2)[::-1]
+    cum_frac = np.cumsum(sorted_sq) / (sorted_sq.sum() or 1.0)
+
+    out = {}
+    for t in thresholds:
+        hit = np.where(cum_frac >= t)[0]
+        out[t] = int(hit[0]) + 1 if len(hit) else n_features
+    return out
+
+
 def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
                      ax=None, title=None):
     """Sorted element-value "scree" plot for factor ``k`` of ``W``.
@@ -1464,10 +1517,13 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     power features (``^``, the first ``n_power_rows`` of the 36 channel rows
     when ``W`` is reshaped to (36, n_freq)) from coherence features (``o``).
 
-    Vertical guides mark the rank at which the cumulative squared-L2 of the
-    sorted entries first reaches each threshold, and each guide is labelled
-    the legend gives the count for each -- how many features it takes to reach
-    that cutoff, which is usually what the figure is being read for.
+    Vertical guides mark how far down the ranking you have to go to account
+    for 50 / 60 / 70 / 80 % of the factor's total strength, where "strength"
+    means the sum of the squared weights -- the same quantity a PCA scree
+    plot calls explained variance. Each guide is drawn so that exactly that
+    many features fall to its left, so the count can be read straight off the
+    x axis; the counts are also returned by :func:`scree_cutoffs` if you want
+    the numbers rather than the picture.
 
     Marker size, edge width and transparency are scaled to the number of
     features, so the 108-feature guided-band factors and the 1944-feature
@@ -1481,8 +1537,8 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     k : int
         Which factor to inspect (default 0, the supervised one).
     thresholds : iterable[float]
-        Cumulative squared-L2 cutoffs to mark, as fractions. Defaults to
-        ``(0.5, 0.6, 0.7, 0.8)``.
+        Where to draw the cutoff guides, as fractions of the factor's total
+        strength. Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
     n_power_rows : int
         How many of the 36 (region + region_pair) rows are power features
         (default 8 -- 8 regions). The rest are coherence (28 region pairs).
@@ -1513,18 +1569,9 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     sorted_values = row[sorted_idx]
     orig_row, _ = np.unravel_index(sorted_idx, (total_rows, num_freqs))
 
-    # Rank at which the cumulative squared-L2 first reaches each threshold.
-    # Accumulate in float64: W is stored float32, and with ~2000 features the
-    # rounding of a float32 cumsum is enough to move a count by one when the
-    # curve crosses a threshold almost exactly (PreVsPost134_1Hz at 80 % sits
-    # 8e-7 below the mark at rank 590, so the answer is 591, not 590).
-    sorted_sq = (row.astype(np.float64) ** 2)[sorted_idx]
-    cum_frac = np.cumsum(sorted_sq) / (sorted_sq.sum() or 1.0)
     thresholds = list(thresholds)
-    thr_counts = []
-    for t in thresholds:
-        hit = np.where(cum_frac >= t)[0]
-        thr_counts.append(int(hit[0]) + 1 if len(hit) else n_features)
+    thr_counts = [scree_cutoffs(W, k=k, thresholds=thresholds)[t]
+                  for t in thresholds]
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(9, 5.5))
@@ -1546,36 +1593,40 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
         msize, edge, alpha = 5, 0.0, 0.45
 
     is_power = orig_row < n_power_rows
-    x = np.arange(n_features)
+    # Rank 1 = largest weight, so the x axis reads as a rank and the number of
+    # features left of a cutoff guide is the count for that cutoff.
+    x = np.arange(1, n_features + 1)
     ax.scatter(x[~is_power], values[~is_power], marker='o', s=msize,
                color='#E8836F', edgecolors='black', linewidths=edge,
-               alpha=alpha, label=f'Coherence  (n = {int((~is_power).sum())})',
+               alpha=alpha,
+               label=f'Coherence between two regions  '
+                     f'({int((~is_power).sum())} features)',
                zorder=2)
     ax.scatter(x[is_power], values[is_power], marker='^', s=msize * 1.15,
                color='#2E6F9E', edgecolors='black', linewidths=edge,
                alpha=min(1.0, alpha + 0.15),
-               label=f'Power  (n = {int(is_power.sum())})', zorder=3)
+               label=f'Power within one region  '
+                     f'({int(is_power.sum())} features)', zorder=3)
 
-    # Cutoff guides. Labels sit above the axes, horizontal, so they never
-    # cover the data and do not collide with each other however many there are.
-    ax.set_xlim(-n_features * 0.02, n_features * 1.02)
+    ax.set_xlim(0.5 - n_features * 0.02, n_features + 0.5 + n_features * 0.02)
     ymin, ymax = 0.0, float(values.max()) if n_features else 1.0
     ax.set_ylim(ymin - 0.04 * ymax, ymax * 1.06)
     colours = plt.cm.viridis(np.linspace(0.15, 0.72, max(len(thresholds), 1)))
-    # The cutoffs can land only a few ranks apart (11, 15, 20, 27 out of 108 is
-    # typical for the guided-band factors), so the counts go in the legend
-    # rather than next to the lines, where they would overprint each other.
+    # Drawn at cnt + 0.5, i.e. in the gap after the cnt-th marker, so exactly
+    # cnt features sit to the left of the line and the reader can take the
+    # count off the x axis instead of from a label.
     for (t, cnt), colour in zip(zip(thresholds, thr_counts), colours):
-        ax.axvline(cnt, color=colour, linestyle='--', linewidth=1.5,
+        ax.axvline(cnt + 0.5, color=colour, linestyle='--', linewidth=1.5,
                    alpha=0.95, zorder=1,
-                   label=f'{t:.0%} of L²  —  {cnt} features')
+                   label=f'{t:.0%} of factor strength')
 
-    ax.set_xlabel(f'Features ranked by weight  (n = {n_features})')
-    ylab = f'Weight in factor {k}'
+    ax.set_xlabel(f'Feature rank, strongest first  '
+                  f'({n_features} features in total)')
+    ylab = f'Feature weight in factor {k}'
     if exponent != 0:
         ylab += rf'  ($\times 10^{{{exponent}}}$)'
     ax.set_ylabel(ylab)
-    ax.set_title(title or f'Feature contributions to factor {k}',
+    ax.set_title(title or f'How much each feature contributes to factor {k}',
                  pad=10, loc='left')
     ax.grid(alpha=0.25, linewidth=0.6)
     ax.spines[['top', 'right']].set_visible(False)

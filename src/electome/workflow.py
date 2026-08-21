@@ -199,7 +199,8 @@ def run_circos_prep(model, train_dict, *, output_csv,
     k : int
         Which factor to inspect (paper-active = 0).
     threshold_ratio : float
-        Cumulative squared-L2 cutoff (default 0.8 -- matches notebooks).
+        Share of the factor's total strength (sum of squared weights) the
+        kept features must add up to (default 0.8 -- matches notebooks).
 
     Returns
     -------

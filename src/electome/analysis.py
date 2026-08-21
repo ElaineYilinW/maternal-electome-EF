@@ -367,9 +367,9 @@ def process_W_nmf_k(W_normalized, train_dict, threshold_ratio=0.9, k=0,
     """Select the most-explanatory entries of factor ``k`` of W.
 
     Builds a (region+region_pair, freq) DataFrame from the k-th row of
-    ``W_normalized`` and cuts off entries by cumulative squared-L2 contribution
-    at ``threshold_ratio`` (i.e. keep entries whose cumulative contribution is
-    <= threshold).
+    ``W_normalized`` and keeps the strongest entries, taken in order until
+    their squared weights add up to ``threshold_ratio`` of the factor's total
+    strength (the sum of its squared weights).
 
     Auto-detects ``num_freqs`` from W shape (3-band -> 3, 1Hz -> 54) and
     auto-prettifies tuple freq-band labels into ``"lo-hi"`` strings.
