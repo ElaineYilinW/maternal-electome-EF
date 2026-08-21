@@ -1514,7 +1514,11 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     orig_row, _ = np.unravel_index(sorted_idx, (total_rows, num_freqs))
 
     # Rank at which the cumulative squared-L2 first reaches each threshold.
-    sorted_sq = (row ** 2)[sorted_idx]
+    # Accumulate in float64: W is stored float32, and with ~2000 features the
+    # rounding of a float32 cumsum is enough to move a count by one when the
+    # curve crosses a threshold almost exactly (PreVsPost134_1Hz at 80 % sits
+    # 8e-7 below the mark at rank 590, so the answer is 591, not 590).
+    sorted_sq = (row.astype(np.float64) ** 2)[sorted_idx]
     cum_frac = np.cumsum(sorted_sq) / (sorted_sq.sum() or 1.0)
     thresholds = list(thresholds)
     thr_counts = []
