@@ -1459,10 +1459,12 @@ def scree_cutoffs(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8)):
     """How many elements are selected at each threshold of factor ``k``.
 
     This is the paper's feature-thresholding rule (Supplement, "Feature
-    Thresholding"): rank the elements of the EF loading vector by squared
-    loading magnitude, accumulate the proportion of the total squared
-    loadings, and select elements from largest to smallest while the running
-    total stays within the threshold. The element that would push the total
+    Thresholding"): rank the elements of the factor by squared absolute
+    strength, accumulate the proportion of the total, and select elements
+    from largest to smallest while the running total stays within the
+    threshold. "Absolute strength" is the name the dual-selection figures
+    give these values (bar length / dot size in the selected-feature plots);
+    it is simply the entry of the normalized W_nmf row. The element that would push the total
     past the threshold is not selected -- the same ``cumulative_sum <=
     threshold`` rule :func:`electome.analysis.process_W_nmf_k` uses to build
     the circos and heatmap figures, so the counts here match the published
@@ -1476,15 +1478,15 @@ def scree_cutoffs(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8)):
     Parameters
     ----------
     W : torch.Tensor or np.ndarray
-        The EF loading matrix from ``model.get_W_nmf()``, shape
+        The normalized W_nmf from ``model.get_W_nmf()``, shape
         (n_factors, n_elements). ``get_W_nmf`` already applies the Softplus
-        and the per-factor L2 normalisation, so this is the same matrix the
-        paper's selection ran on.
+        and the per-factor L2 normalisation, so its entries are the absolute
+        strengths the paper's selection ran on.
     k : int
         Which factor (default 0, the supervised one).
     thresholds : iterable[float]
-        Thresholds to report, as fractions of the total squared loadings.
-        Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
+        Thresholds to report, as fractions of the total squared absolute
+        strength. Defaults to ``(0.5, 0.6, 0.7, 0.8)``.
 
     Returns
     -------
@@ -1501,7 +1503,7 @@ def scree_cutoffs(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8)):
         W = W.detach().cpu().numpy()
     row = np.asarray(W[k, :], dtype=float)
 
-    # Accumulate in float64: W is stored float32, and with ~2000 elements the
+    # Accumulate in float64: W_nmf is stored float32, and with ~2000 elements the
     # rounding of a float32 cumsum is enough to move a count by one when the
     # curve crosses a threshold almost exactly.
     sorted_sq = np.sort(row.astype(np.float64) ** 2)[::-1]
@@ -1523,8 +1525,8 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     when ``W`` is reshaped to (36, n_freq)) from coherence features (``o``).
 
     Dashed lines mark the element cut-off points at 50 / 60 / 70 / 80 % of
-    the total squared loadings, following the paper's feature-thresholding
-    rule (see :func:`scree_cutoffs`). Each line is drawn just past the last
+    the cumulated squared absolute strength, following the paper's
+    feature-thresholding rule (see :func:`scree_cutoffs`). Each line is drawn just past the last
     selected element, so the number of elements selected at that threshold
     can be read straight off the x axis; :func:`scree_cutoffs` returns the
     same numbers if you want them as values.
@@ -1536,14 +1538,14 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
     Parameters
     ----------
     W : torch.Tensor or np.ndarray
-        The EF loading matrix from ``model.get_W_nmf()``, shape
-        (n_factors, n_elements).
+        The normalized W_nmf from ``model.get_W_nmf()``, shape
+        (n_factors, n_elements). Its entries are the absolute strengths.
     k : int
         Which factor to inspect (default 0, the supervised one).
     thresholds : iterable[float]
         Where to draw the cut-off lines, as fractions of the total squared
-        loadings. Defaults to ``(0.5, 0.6, 0.7, 0.8)``, the four thresholds
-        the supplemental figures report.
+        absolute strength. Defaults to ``(0.5, 0.6, 0.7, 0.8)``, the four
+        thresholds the supplemental figures report.
     n_power_rows : int
         How many of the 36 (region + region_pair) rows are power elements
         (default 8 -- 8 regions). The rest are coherence (28 region pairs).
@@ -1598,8 +1600,9 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
         msize, edge, alpha = 5, 0.0, 0.45
 
     is_power = orig_row < n_power_rows
-    # Rank 1 = largest loading, so the x axis reads as a rank and the number
-    # of elements left of a cut-off line is the count at that threshold.
+    # Rank 1 = largest absolute strength, so the x axis reads as a rank and
+    # the number of elements left of a cut-off line is the count at that
+    # threshold.
     x = np.arange(1, n_features + 1)
     ax.scatter(x[~is_power], values[~is_power], marker='o', s=msize,
                color='#E8836F', edgecolors='black', linewidths=edge,
@@ -1623,9 +1626,9 @@ def plot_scree_W_nmf(W, k=0, thresholds=(0.5, 0.6, 0.7, 0.8), n_power_rows=8,
                    alpha=0.95, zorder=1,
                    label=f'{t:.0%} Threshold')
 
-    ax.set_xlabel(f'Elements ranked by loading, largest first  '
+    ax.set_xlabel(f'Elements ranked by absolute strength, largest first  '
                   f'({n_features} elements in total)')
-    ylab = f'Loading in factor {k}'
+    ylab = f'Absolute strength in factor {k}'
     if exponent != 0:
         ylab += rf'  ($\times 10^{{{exponent}}}$)'
     ax.set_ylabel(ylab)
