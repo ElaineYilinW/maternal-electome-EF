@@ -361,10 +361,12 @@ def make_features(lfps, fs, min_freq, max_freq, window_duration, freq_bands,
 
     # Power along the diagonal of CPSD
     Pxx = np.real(np.diagonal(cpsd, 0, 1, 2))  # [w, f, r]
+    # Windows that need clipping (negative power, or a coherence denominator
+    # below eps -- i.e. a flat, zero-power trace) are flagged for every band;
+    # lfp_to_features skips any recording that has one.
+    eps = 1e-15
+    clipped = (Pxx < 0.0).any(axis=(1, 2))
     if clip_for_safety:
-        n_neg = int(np.sum(Pxx < 0.0))
-        if n_neg > 0:
-            print(f"  WARNING: clipped {n_neg} negative power values to 0.0")
         Pxx = np.maximum(Pxx, 0.0)
     amp = np.sqrt(Pxx)
     amp = np.moveaxis(amp, 1, -1)  # [w, r, f]
@@ -372,14 +374,11 @@ def make_features(lfps, fs, min_freq, max_freq, window_duration, freq_bands,
 
     # Squared coherence
     denom = amp[:, np.newaxis] * amp[:, :, np.newaxis]
+    clipped |= (denom < eps).any(axis=(1, 2, 3))
     if clip_for_safety:
-        eps = 1e-15
-        n_small = int(np.sum(denom < eps))
-        if n_small > 0:
-            print(f"  WARNING: clipped {n_small} denominator values below {eps}")
         denom = np.clip(denom, eps, None)
-    # A flat (zero-power) trace makes this 0/0; normalize_features_per_file
-    # sets such windows to NaN.
+    # A flat trace makes this 0/0 where not clipped; such a recording is
+    # skipped by the caller, so silence the warning here.
     with np.errstate(divide='ignore', invalid='ignore'):
         coh_sq = (np.abs(cpsd) ** 2) / (denom ** 2)
 
@@ -412,6 +411,7 @@ def make_features(lfps, fs, min_freq, max_freq, window_duration, freq_bands,
         "freq_band":         freq_bands,
         "region":            rois,
         "region_pair":       rois_pairs_str,
+        "clipped_windows":   clipped,
     }
 
 
@@ -423,26 +423,23 @@ def normalize_features_per_file(feature_dict, epsilon=1e-7):
     """Reshape, log10-transform power, and min-max normalize both fields.
 
     Each file is normalized independently using its own min/max. The result
-    falls in the range ``[epsilon, 1 + epsilon]``. No recording is rejected.
+    falls in the range ``[epsilon, 1 + epsilon]``.
 
     Power below 1 gives negative log10 values. Those are kept and normalised
-    like any other value -- they only reflect the amplitude units, and the
-    per-file min-max removes any constant offset. This is what produced the
-    paper's 1-Hz training features (``Spec_Features_1Hz_8roi``).
+    like any other value: they only reflect the amplitude units, and the
+    per-file min-max removes any constant offset. This is how the paper's
+    1-Hz training features (``Spec_Features_1Hz_8roi``) were made.
 
-    A window where the trace is flat (zero power, e.g. after a headstage
-    disconnects) has no defined log power or coherence. Such windows, and the
-    window on either side of a flat stretch, are set to NaN and left out of the
-    min/max, so the rest of the recording is normalised normally; downstream
-    they get a NaN score and are left out of the AUC.
+    Recordings with a flat (zero-power) stretch never reach this function:
+    :func:`lfp_to_features` skips them first (see ``clipped_windows`` in
+    :func:`make_features`).
 
     Args:
         feature_dict: output of ``make_features`` (modified in place).
         epsilon: small offset to avoid exact zeros after min-max.
 
     Returns:
-        (feature_dict, True). The flag is kept for callers that test it; it
-        is always True.
+        (feature_dict, True). The flag is kept for callers that test it.
     """
     # Flatten the last two dims (region|pair, band) into a single feature axis
     n_window = feature_dict['power'].shape[0]
@@ -452,26 +449,11 @@ def normalize_features_per_file(feature_dict, epsilon=1e-7):
     feature_dict['region']      = feature_dict['region']      * len(feature_dict['freq_band'])
     feature_dict['region_pair'] = feature_dict['region_pair'] * len(feature_dict['freq_band'])
 
-    with np.errstate(divide='ignore'):
-        feature_dict['power'] = np.log10(feature_dict['power'])
+    feature_dict['power'] = np.log10(feature_dict['power'])
 
-    # Flat windows: no usable value anywhere in the window -> NaN throughout
-    flat = ~(np.isfinite(feature_dict['power']).all(axis=1)
-             & np.isfinite(feature_dict['coh_sq_coherence']).all(axis=1))
-    # A window bordering a flat stretch holds only the decimation filter's
-    # fade-out: power is tiny but not zero, and would become the file's minimum
-    # and squash the normalisation of every other window. Treat it as flat too.
-    flat = flat | np.r_[flat[1:], False] | np.r_[False, flat[:-1]]
-    if flat.any():
-        feature_dict['power'][flat] = np.nan
-        feature_dict['coh_sq_coherence'][flat] = np.nan
-        print(f"  {int(flat.sum())} of {n_window} window(s) have a flat signal "
-              "(zero power); they get no score")
-
-    # Per-file min-max normalization over the usable windows
-    pmin, pmax = np.nanmin(feature_dict['power']), np.nanmax(feature_dict['power'])
-    cmin, cmax = (np.nanmin(feature_dict['coh_sq_coherence']),
-                  np.nanmax(feature_dict['coh_sq_coherence']))
+    # Per-file min-max normalization
+    pmin, pmax = feature_dict['power'].min(), feature_dict['power'].max()
+    cmin, cmax = feature_dict['coh_sq_coherence'].min(), feature_dict['coh_sq_coherence'].max()
     feature_dict['power']            = (feature_dict['power']            - pmin) / (pmax - pmin) + epsilon
     feature_dict['coh_sq_coherence'] = (feature_dict['coh_sq_coherence'] - cmin) / (cmax - cmin) + epsilon
     return feature_dict, True
@@ -548,6 +530,9 @@ def extract_features_for_stage(lfp_files, chans_files, stage_name, output_dir,
                 band_upper_inclusive=band_upper_inclusive,
                 clip_for_safety=clip_for_safety,
             )
+            if feature_data.pop('clipped_windows').any():
+                skipped.append((lfp_fn, "flat signal (zero power)"))
+                continue
             # Add per-window metadata
             n_window = feature_data['power'].shape[0]
             feature_data['mouse_id'] = np.repeat(mouseid, n_window)
@@ -717,6 +702,22 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
     features = make_features(
         ave_lfps, fs=fs, window_duration=window_duration, **settings
     )
+    clipped = features.pop("clipped_windows")
+    if clipped.any():
+        rows = np.where(clipped)[0]
+        n_all = len(clipped)
+        t0, t1 = rows[0] * window_duration / 3600, (rows[-1] + 1) * window_duration / 3600
+        hint = ""
+        if rows[0] > 1 and clipped[rows[0]:].all():
+            # one window of margin: the window at the edge carries filter ringing
+            keep_s = int((rows[0] - 1) * window_duration)
+            hint = (f" Everything before {t0:.2f} h is usable: set "
+                    f"max_duration_s={keep_s} to keep it.")
+        raise ValueError(
+            f"{lfp_file}: flat signal (zero power) in {len(rows)} of {n_all} "
+            f"windows, between {t0:.2f} h and {t1:.2f} h -- a disconnected or "
+            f"dropped-out recording, skipped.{hint}"
+        )
 
     n_window = features['power'].shape[0]
     features['mouse_id'] = np.repeat(mouse_id, n_window)
