@@ -503,10 +503,11 @@ def score_recordings(model, features, *, label_name="onnest_label",
         if labels is None:
             return float("nan")
         y = np.asarray(labels, dtype=float).ravel()
-        keep = ~np.isnan(y)
+        s = np.asarray(scores, dtype=float).ravel()
+        keep = ~np.isnan(y) & ~np.isnan(s)      # flat-signal windows have no score
         if len(np.unique(y[keep])) < 2:
             return float("nan")
-        return float(roc_auc_score(y[keep], np.asarray(scores).ravel()[keep]))
+        return float(roc_auc_score(y[keep], s[keep]))
 
     win_frames, rec_rows = [], []
     for key in sorted(features):
@@ -538,7 +539,7 @@ def score_recordings(model, features, *, label_name="onnest_label",
             "n_windows": n_win,
             f"n_{label_name}_1": n_pos,
             f"n_{label_name}_0": (n_win - n_pos) if labels is not None else np.nan,
-            "mean_score": float(np.mean(scores)),
+            "mean_score": float(np.nanmean(scores)),
             "auc": _auc(scores, labels),
         })
 
