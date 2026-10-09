@@ -492,6 +492,12 @@ def score_recordings(model, features, *, label_name="onnest_label",
     if "X" in features:                       # a single feature dict
         features = {str(np.asarray(features.get("mouse_id", ["recording"]))[0]):
                     features}
+    if not features:
+        raise ValueError(
+            "no recordings to score: every recording was skipped during feature "
+            "extraction. The `skipped` list returned by batch_lfp_to_features "
+            "says why for each one."
+        )
 
     def _auc(scores, labels):
         if labels is None:

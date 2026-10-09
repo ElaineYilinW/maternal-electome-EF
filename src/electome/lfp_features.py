@@ -378,7 +378,10 @@ def make_features(lfps, fs, min_freq, max_freq, window_duration, freq_bands,
         if n_small > 0:
             print(f"  WARNING: clipped {n_small} denominator values below {eps}")
         denom = np.clip(denom, eps, None)
-    coh_sq = (np.abs(cpsd) ** 2) / (denom ** 2)
+    # A flat (zero-power) trace makes this 0/0; the NaN it leaves is caught,
+    # with a readable message, by normalize_features_per_file.
+    with np.errstate(divide='ignore', invalid='ignore'):
+        coh_sq = (np.abs(cpsd) ** 2) / (denom ** 2)
 
     # Keep only upper triangle of region-pair matrix
     n_signals = coh_sq.shape[1]
@@ -420,9 +423,18 @@ def normalize_features_per_file(feature_dict, epsilon=1e-7):
     """Reshape, log10-transform power, and min-max normalize both fields.
 
     Each file is normalized independently using its own min/max. The result
-    falls in the range ``[epsilon, 1 + epsilon]``. If log10 produces any
-    negative values (raw power < 1), the file is flagged as invalid and the
-    caller is expected to skip it.
+    falls in the range ``[epsilon, 1 + epsilon]``.
+
+    Power below 1 gives negative log10 values. Those are kept and normalised
+    like any other value -- they only reflect the amplitude units, and the
+    per-file min-max removes any constant offset. This is what produced the
+    paper's 1-Hz training features (``Spec_Features_1Hz_8roi``), which kept
+    65 recordings with such values.
+
+    Zero power is different: log10 gives ``-inf`` and coherence becomes NaN,
+    which no normalisation can handle. Zero power means the trace is flat --
+    a disconnected headstage or a dropout -- so the file is flagged invalid
+    and the caller is expected to skip it.
 
     Args:
         feature_dict: output of ``make_features`` (modified in place).
@@ -431,7 +443,9 @@ def normalize_features_per_file(feature_dict, epsilon=1e-7):
     Returns:
         (feature_dict, ok)
             ok=True  -> normalization successful, file should be saved
-            ok=False -> negative log10 values were detected; skip this file
+            ok=False -> zero power / non-finite values; skip this file. The
+                        windows affected are those where
+                        ``~np.isfinite(feature_dict['power']).all(axis=1)``.
     """
     # Flatten the last two dims (region|pair, band) into a single feature axis
     n_window = feature_dict['power'].shape[0]
@@ -441,11 +455,14 @@ def normalize_features_per_file(feature_dict, epsilon=1e-7):
     feature_dict['region']      = feature_dict['region']      * len(feature_dict['freq_band'])
     feature_dict['region_pair'] = feature_dict['region_pair'] * len(feature_dict['freq_band'])
 
-    # log10 power; abort if any value is negative (raw power < 1)
-    feature_dict['power'] = np.log10(feature_dict['power'])
-    n_neg = int(np.sum(feature_dict['power'] < 0))
-    if n_neg > 0:
-        print(f"  Found {n_neg} negative values after log10; file will not be saved")
+    # log10 power. Negative values (power < 1) are fine; only zero power is not.
+    with np.errstate(divide='ignore'):
+        feature_dict['power'] = np.log10(feature_dict['power'])
+    bad = ~(np.isfinite(feature_dict['power']).all(axis=1)
+            & np.isfinite(feature_dict['coh_sq_coherence']).all(axis=1))
+    if bad.any():
+        print(f"  Found {int(bad.sum())} window(s) with zero power (flat signal); "
+              "file will not be saved")
         return feature_dict, False
 
     # Per-file min-max normalization
@@ -534,7 +551,7 @@ def extract_features_for_stage(lfp_files, chans_files, stage_name, output_dir,
 
             feature_data, ok = normalize_features_per_file(feature_data)
             if not ok:
-                skipped.append((lfp_fn, "negative log10 values"))
+                skipped.append((lfp_fn, "zero power (flat signal)"))
                 continue
 
             with open(out_path, 'wb') as f:
@@ -580,6 +597,7 @@ def _read_scoring(path):
 
 def lfp_to_features(lfp_file, chans_file, *, band="3band",
                     fs=1000, window_duration=3.0,
+                    max_duration_s=None,
                     mouse_id=None, period=None,
                     label_file=None, label_name="onnest_label",
                     onnest_xlsx=None, output_pkl=None,
@@ -610,6 +628,13 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
     window_duration : float
         Seconds per analysis window. Leave at 3.0 to match the released
         models; changing it changes what one score refers to.
+    max_duration_s : float or None
+        Keep only the first ``max_duration_s`` seconds of the recording; the
+        crop is applied to the raw LFP before anything else, so features,
+        normalisation, labels and scores all cover the same stretch.
+        ``None`` (the default) uses the whole recording. A recording shorter
+        than the limit is used whole. The paper analysed the first 4 h at
+        P1, 3 h at P3, 2 h at P8 and 1 h at P14.
     mouse_id, period : str, optional
         Written into the returned dict as per-window arrays. ``mouse_id``
         defaults to the ``Mouse...`` token in the LFP filename.
@@ -670,6 +695,14 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
         mouse_id = m.group(1) if m else _stem(lfp_file, '_LFP.mat')
 
     lfps = lpne_loader(lfp_file)
+    if max_duration_s is not None:
+        if max_duration_s < window_duration:
+            raise ValueError(
+                f"max_duration_s={max_duration_s} is shorter than one "
+                f"{window_duration} s window"
+            )
+        n_keep = int(round(max_duration_s * fs))
+        lfps = {ch: np.asarray(x)[..., :n_keep] for ch, x in lfps.items()}
     mat_data = scipy.io.loadmat(chans_file)
     for required in ('CHANACTIVE', 'CHANNAMES'):
         if required not in mat_data:
@@ -690,9 +723,20 @@ def lfp_to_features(lfp_file, chans_file, *, band="3band",
 
     features, ok = normalize_features_per_file(features)
     if not ok:
+        bad = ~(np.isfinite(features['power']).all(axis=1)
+                & np.isfinite(features['coh_sq_coherence']).all(axis=1))
+        rows = np.where(bad)[0]
+        t0, t1 = rows[0] * window_duration / 3600, (rows[-1] + 1) * window_duration / 3600
+        hint = ""
+        if rows[0] > 1 and bad[rows[0]:].all():
+            # one window of margin: the window at the edge carries filter ringing
+            keep_s = int((rows[0] - 1) * window_duration)
+            hint = (f" Everything before {t0:.2f} h is usable: set "
+                    f"max_duration_s={keep_s} to keep it.")
         raise ValueError(
-            f"{lfp_file}: negative power after log10 -- recording rejected by "
-            "normalize_features_per_file"
+            f"{lfp_file}: zero power (flat signal) in {len(rows)} of {n_window} "
+            f"windows, between {t0:.2f} h and {t1:.2f} h -- a disconnected or "
+            f"dropped-out recording.{hint}"
         )
 
     features['X'] = np.hstack([features['power'], features['coh_sq_coherence']])
@@ -906,6 +950,7 @@ def pair_recording_files(lfp_files, chans_files, onnest_files=None, *,
 def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
                           band="3band", period=None, mouse_id=None,
                           fs=1000, window_duration=3.0,
+                          max_duration_s=None,
                           label_name="onnest_label",
                           output_dir=None, strict=False, verbose=True,
                           expected_regions=MODEL_REGIONS,
@@ -942,6 +987,9 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
         by this field) would be per-recording instead. Pass ``{key: animal}``
         to group sessions, e.g.
         ``mouse_id={'ratA_day1': 'ratA', 'ratA_day2': 'ratA'}``.
+    max_duration_s : float or None
+        Keep only the first ``max_duration_s`` seconds of every recording;
+        see :func:`lfp_to_features`. ``None`` uses each recording whole.
     output_dir : str, optional
         If given, each result is pickled to ``<output_dir>/<key>_<band>.pkl``.
     strict : bool
@@ -1002,7 +1050,8 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
         try:
             feats = lfp_to_features(
                 p["lfp"], p["chans"], band=band, fs=fs,
-                window_duration=window_duration, period=stage,
+                window_duration=window_duration,
+                max_duration_s=max_duration_s, period=stage,
                 mouse_id=animal,
                 label_file=p["onnest"], label_name=label_name,
                 # Band goes in the filename: running both parameterisations
@@ -1030,7 +1079,8 @@ def batch_lfp_to_features(lfp_files, chans_files, onnest_files=None, *,
                 extra = f", {label_name}=1 on {int(lab.sum())}/{n_win}"
                 if lab.sum() in (0, n_win):
                     extra += "  (single class -- no AUC possible)"
-            print(f"  OK   {key}: X={feats['X'].shape}{extra}")
+            hours = n_win * window_duration / 3600
+            print(f"  OK   {key}: X={feats['X'].shape} ({hours:.2f} h used){extra}")
 
     if verbose:
         print(f"{len(results)} recording(s) processed, {len(skipped)} skipped.")

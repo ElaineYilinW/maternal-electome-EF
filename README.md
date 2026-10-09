@@ -176,6 +176,7 @@ feats, skipped = batch_lfp_to_features(
     'lfps/', 'chans/', 'behavior/',      # pass None for behavior = scores only
     band='3band',                        # or '1Hz'
     fs=1000,                             # fixed: these recordings are 1000 Hz
+    max_duration_s=None,                 # e.g. 2*3600 = first 2 h only; None = all
     period={'recA': 'P1', 'recB': 'P8'}, # free-text stage label, optional
     mouse_id=None,                       # set it if one animal has >1 recording
     label_name='onnest_label',           # name of the behaviour you scored
@@ -192,7 +193,7 @@ per_window, per_recording, per_animal = score_recordings(
 ```
 
 `score_recordings` is the back-projection step: it scores every window of every
-recording and returns three tables — per window, per recording, and per animal
+recording — the whole recording unless `max_duration_s` cuts it — and returns three tables — per window, per recording, and per animal
 (pooling an animal's sessions, the level the paper reports). An AUC needs both
 classes present and is `NaN` otherwise; recordings with no scoring file still
 get their scores.
