@@ -193,10 +193,20 @@ per_window, per_recording, per_animal = score_recordings(
 ```
 
 `score_recordings` is the back-projection step: it scores every window of every
-recording — the whole recording unless `max_duration_s` cuts it — and returns three tables — per window, per recording, and per animal
+recording and returns three tables — per window, per recording, and per animal
 (pooling an animal's sessions, the level the paper reports). An AUC needs both
 classes present and is `NaN` otherwise; recordings with no scoring file still
 get their scores.
+
+**Recording length.** Every recording is used from start to end by default —
+every 3-s window is scored and enters the AUC. To use only the beginning of
+each recording, pass `max_duration_s` (seconds) to `batch_lfp_to_features`, or
+set `MAX_DURATION_S` in the tutorial's settings cell, e.g. `2 * 3600` for the
+first 2 h. The cut is made on the raw LFP before anything else, so features,
+labels, scores and AUC all cover the same stretch. Use the same duration for
+recordings you want to compare: the AUC depends on which part of a session is
+included. The paper used the first 4 h at P1, 3 h at P3, 2 h at P8 and 1 h at
+P14.
 
 Four things must line up, and each is checked with a readable error rather
 than a quietly wrong answer:
